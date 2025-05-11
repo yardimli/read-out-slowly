@@ -1,0 +1,40 @@
+body {
+    padding-bottom: 100px;
+}
+
+#displayText {
+    font-size: 1.5em;
+    padding: 15px;
+    border: 1px solid #eee;
+    border-radius: 5px;
+    min-height: 100px;
+    background-color: #f9f9f9;
+    white-space: pre-wrap; /* Handles newlines correctly */
+}
+
+.highlight {
+    background-color: yellow;
+
+
+.modal-body .list-group-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-body .list-group-item .text-preview {
+    flex-grow: 1;
+    margin-right: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#aiPreviewArea {
+    white-space: pre-wrap;
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #ccc;
+    padding: 10px;
+    background-color: #f8f9fa;
+}
