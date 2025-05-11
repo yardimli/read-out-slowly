@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	const stopPlaybackBtn = document.getElementById('stopPlaybackBtn');
 	const audioPlayer = document.getElementById('audioPlayer');
 	const statusMessage = document.getElementById('statusMessage');
+	const settingsCard = document.getElementById('settingsCard');
 	
 	// New UI elements for settings
 	const statusVerbositySelect = document.getElementById('statusVerbositySelect');
@@ -72,9 +73,12 @@ document.addEventListener('DOMContentLoaded', () => {
 		if (mainTextarea.style.display === 'none') {
 			mainTextarea.style.display = 'block';
 			toggleTextareaBtn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Textarea';
+			settingsCard.style.display = 'block';
+			
 		} else {
 			mainTextarea.style.display = 'none';
 			toggleTextareaBtn.innerHTML = '<i class="fas fa-eye"></i> Show Textarea';
+			settingsCard.style.display = 'none';
 		}
 	});
 	

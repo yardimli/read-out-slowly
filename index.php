@@ -99,7 +99,7 @@
 	<h1>Read Out Slowly Tool</h1>
 
 	<!-- Settings Area -->
-	<div class="card mb-3">
+	<div class="card mb-3" id="settingsCard">
 		<div class="card-header">
 			<h5 class="mb-0">Settings</h5>
 		</div>
@@ -122,6 +122,27 @@
 						<input class="form-check-input" type="checkbox" role="switch" id="togglePlayAllBtnSwitch" checked>
 						<label class="form-check-label" for="togglePlayAllBtnSwitch">Show "Play All" Button</label>
 					</div>
+				</div>
+			</div>
+			<div class="row align-items-center mb-3">
+				<div class="col-md-4">
+					<label for="wordsPerChunkInput" class="form-label">Words per chunk (approx):</label>
+					<input type="number" id="wordsPerChunkInput" class="form-control" value="15" min="1">
+				</div>
+				<div class="col-md-4">
+					<label for="voiceSelect" class="form-label">TTS Voice:</label>
+					<select id="voiceSelect" class="form-select">
+						<option value="alloy">Alloy</option>
+						<option value="echo">Echo</option>
+						<option value="fable">Fable</option>
+						<option value="onyx">Onyx</option>
+						<option value="nova" selected>Nova</option>
+						<option value="shimmer">Shimmer</option>
+					</select>
+				</div>
+				<div class="col-md-4">
+					<label for="volumeInput" class="form-label">Volume (1-10, FFMPEG):</label>
+					<input type="number" id="volumeInput" class="form-control" value="4" min="0.1" max="10" step="0.1">
 				</div>
 			</div>
 		</div>
@@ -197,28 +218,6 @@
 	<div class="mb-3">
 		<label for="mainTextarea" class="form-label">Enter or generate text below:</label>
 		<textarea id="mainTextarea" class="form-control" rows="10" placeholder="Type or paste your text here..."></textarea>
-	</div>
-
-	<div class="row align-items-center mb-3">
-		<div class="col-md-4">
-			<label for="wordsPerChunkInput" class="form-label">Words per chunk (approx):</label>
-			<input type="number" id="wordsPerChunkInput" class="form-control" value="15" min="1">
-		</div>
-		<div class="col-md-4">
-			<label for="voiceSelect" class="form-label">TTS Voice:</label>
-			<select id="voiceSelect" class="form-select">
-				<option value="alloy">Alloy</option>
-				<option value="echo">Echo</option>
-				<option value="fable">Fable</option>
-				<option value="onyx">Onyx</option>
-				<option value="nova" selected>Nova</option>
-				<option value="shimmer">Shimmer</option>
-			</select>
-		</div>
-		<div class="col-md-4">
-			<label for="volumeInput" class="form-label">Volume (1-10, FFMPEG):</label>
-			<input type="number" id="volumeInput" class="form-control" value="4" min="0.1" max="10" step="0.1">
-		</div>
 	</div>
 
 	<div id="displayText" class="mb-3">
