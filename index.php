@@ -23,6 +23,7 @@
 	if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 		header('Content-Type: application/json');
 		$response = ['success' => false, 'message' => 'Invalid action'];
+
 		try {
 			if ($_POST['action'] === 'generate_text_ai') {
 				$prompt = $_POST['prompt'] ?? 'Write a short, interesting paragraph about space exploration.';
@@ -48,7 +49,7 @@
 				$sanitizedText = strtolower($textChunk);
 				$sanitizedText = preg_replace('/[^\w\s-]/', '', $sanitizedText); // Allow words, spaces, hyphens
 				$sanitizedText = preg_replace('/\s+/', '-', $sanitizedText); // Replace spaces with hyphens
-				$sanitizedText = preg_replace('/-+/', '-', $sanitizedText); // Collapse multiple hyphens
+				$sanitizedText = preg_replace('/-+/', '-', $sanitizedText);  // Collapse multiple hyphens
 				$sanitizedText = trim($sanitizedText, '-');
 				if (strlen($sanitizedText) > 50) { // Max length for text part of filename
 					$sanitizedText = substr($sanitizedText, 0, 50);
@@ -80,6 +81,7 @@
 			}
 			$response = ['success' => false, 'message' => 'Server error: ' . $e->getMessage()];
 		}
+
 		echo json_encode($response);
 		exit;
 	}
@@ -124,12 +126,19 @@
 					</div>
 				</div>
 			</div>
-			<div class="row align-items-center mb-3">
-				<div class="col-md-4">
-					<label for="wordsPerChunkInput" class="form-label">Words per chunk (approx):</label>
-					<input type="number" id="wordsPerChunkInput" class="form-control" value="5" min="1">
+			<div class="row align-items-end mb-3">
+				<div class="col-md-3">
+					<label for="chunkUnitSelect" class="form-label">Chunk by:</label>
+					<select id="chunkUnitSelect" class="form-select">
+						<option value="words" selected>Words</option>
+						<option value="sentences">Sentences</option>
+					</select>
 				</div>
-				<div class="col-md-4">
+				<div class="col-md-3">
+					<label for="wordsPerChunkInput" class="form-label">Words per chunk (approx):</label>
+					<input type="number" id="wordsPerChunkInput" class="form-control" value="10" min="1">
+				</div>
+				<div class="col-md-3">
 					<label for="voiceSelect" class="form-label">TTS Voice:</label>
 					<select id="voiceSelect" class="form-select">
 						<option value="alloy">Alloy</option>
@@ -140,14 +149,13 @@
 						<option value="shimmer">Shimmer</option>
 					</select>
 				</div>
-				<div class="col-md-4">
+				<div class="col-md-3">
 					<label for="volumeInput" class="form-label">Volume (1-10, FFMPEG):</label>
 					<input type="number" id="volumeInput" class="form-control" value="4" min="0.1" max="10" step="0.1">
 				</div>
 			</div>
 		</div>
 	</div>
-
 
 	<!-- AI Generation Modal -->
 	<div class="modal fade" id="aiGenerateModal" tabindex="-1" aria-labelledby="aiGenerateModalLabel" aria-hidden="true">
@@ -200,7 +208,7 @@
 		</div>
 	</div>
 
-	<div class="my-3">
+	<div class="my-3" id="mainControlsContainer">
 		<button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#aiGenerateModal">
 			<i class="fas fa-robot"></i> Generate with AI
 		</button>
@@ -210,8 +218,11 @@
 		<button id="loadFromStorageBtn" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#localStorageLoadModal">
 			<i class="fas fa-upload"></i> Load from LocalStorage
 		</button>
-		<button id="toggleTextareaBtn" class="btn btn-secondary">
-			<i class="fas fa-eye-slash"></i> Hide Textarea
+		<button id="pregenerateAllBtn" class="btn btn-secondary">
+			<i class="fas fa-cogs"></i> Pregenerate All Audio
+		</button>
+		<button id="toggleControlsBtn" class="btn btn-outline-secondary ms-2">
+			<i class="fas fa-eye-slash"></i> Hide Controls
 		</button>
 	</div>
 
@@ -224,15 +235,15 @@
 		Text chunks will appear here...
 	</div>
 
-	<div class="mb-3">
+	<div class="mb-3" id="playbackControlsContainer">
 		<button id="speakNextBtn" class="btn btn-primary me-2">
 			<i class="fas fa-play-circle"></i> Speak Next Chunk
 		</button>
-		<button id="playAllBtn" class="btn btn-success">
+		<button id="playAllBtn" class="btn btn-success me-2">
 			<i class="fas fa-forward"></i> Play All
 		</button>
-		<button id="stopPlaybackBtn" class="btn btn-danger" style="display:none;">
-			<i class="fas fa-stop-circle"></i> Stop Playback
+		<button id="stopPlaybackBtn" class="btn btn-danger" disabled> <!-- Initially disabled, not hidden -->
+			<i class="fas fa-stop-circle"></i> Stop
 		</button>
 	</div>
 
@@ -245,7 +256,6 @@
 			<span id="holdSpinnerProgressText">0%</span>
 		</div>
 	</div>
-
 </div>
 
 <script src="public/vendor/bootstrap5.3.5/js/bootstrap.bundle.min.js"></script>
