@@ -127,7 +127,7 @@
 			<div class="row align-items-center mb-3">
 				<div class="col-md-4">
 					<label for="wordsPerChunkInput" class="form-label">Words per chunk (approx):</label>
-					<input type="number" id="wordsPerChunkInput" class="form-control" value="15" min="1">
+					<input type="number" id="wordsPerChunkInput" class="form-control" value="5" min="1">
 				</div>
 				<div class="col-md-4">
 					<label for="voiceSelect" class="form-label">TTS Voice:</label>
