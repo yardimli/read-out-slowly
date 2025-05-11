@@ -1,6 +1,5 @@
 <?php
 	require __DIR__ . '/vendor/autoload.php';
-
 	use App\Helpers\SimplifiedLlmAudioHelper;
 	use Dotenv\Dotenv;
 
@@ -24,7 +23,6 @@
 	if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 		header('Content-Type: application/json');
 		$response = ['success' => false, 'message' => 'Invalid action'];
-
 		try {
 			if ($_POST['action'] === 'generate_text_ai') {
 				$prompt = $_POST['prompt'] ?? 'Write a short, interesting paragraph about space exploration.';
@@ -50,7 +48,7 @@
 				$sanitizedText = strtolower($textChunk);
 				$sanitizedText = preg_replace('/[^\w\s-]/', '', $sanitizedText); // Allow words, spaces, hyphens
 				$sanitizedText = preg_replace('/\s+/', '-', $sanitizedText); // Replace spaces with hyphens
-				$sanitizedText = preg_replace('/-+/', '-', $sanitizedText);   // Collapse multiple hyphens
+				$sanitizedText = preg_replace('/-+/', '-', $sanitizedText); // Collapse multiple hyphens
 				$sanitizedText = trim($sanitizedText, '-');
 				if (strlen($sanitizedText) > 50) { // Max length for text part of filename
 					$sanitizedText = substr($sanitizedText, 0, 50);
@@ -60,7 +58,6 @@
 					$sanitizedText = 'tts-' . substr(md5($textChunk), 0, 8);
 				}
 				$filenameBase = $voice . '-' . $sanitizedText;
-
 
 				$ttsResponse = SimplifiedLlmAudioHelper::textToSpeechOpenAI($textChunk, $voice, $filenameBase, $volume);
 
@@ -100,6 +97,37 @@
 <body>
 <div class="container mt-4">
 	<h1>Read Out Slowly Tool</h1>
+
+	<!-- Settings Area -->
+	<div class="card mb-3">
+		<div class="card-header">
+			<h5 class="mb-0">Settings</h5>
+		</div>
+		<div class="card-body">
+			<div class="row">
+				<div class="col-md-4 mb-3">
+					<label for="statusVerbositySelect" class="form-label">Status Messages:</label>
+					<select id="statusVerbositySelect" class="form-select">
+						<option value="all" selected>Show All</option>
+						<option value="errors">Errors & Warnings Only</option>
+						<option value="none">Show None</option>
+					</select>
+				</div>
+				<div class="col-md-4 mb-3">
+					<label for="speakNextHoldDuration" class="form-label">"Speak Next" Hold Duration (ms):</label>
+					<input type="number" id="speakNextHoldDuration" class="form-control" value="750" min="0" step="50">
+				</div>
+				<div class="col-md-4 mb-3 align-self-center">
+					<div class="form-check form-switch">
+						<input class="form-check-input" type="checkbox" role="switch" id="togglePlayAllBtnSwitch" checked>
+						<label class="form-check-label" for="togglePlayAllBtnSwitch">Show "Play All" Button</label>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+
 	<!-- AI Generation Modal -->
 	<div class="modal fade" id="aiGenerateModal" tabindex="-1" aria-labelledby="aiGenerateModalLabel" aria-hidden="true">
 		<div class="modal-dialog modal-lg">
@@ -111,8 +139,7 @@
 				<div class="modal-body">
 					<div class="mb-3">
 						<label for="aiPromptInput" class="form-label">Enter your prompt for the AI:</label>
-						<input type="text" class="form-control" id="aiPromptInput"
-						       placeholder="e.g., Write a short poem about the ocean">
+						<input type="text" class="form-control" id="aiPromptInput" placeholder="e.g., Write a short poem about the ocean">
 					</div>
 					<button id="generateAiTextBtn" class="btn btn-primary mb-3">
 						<i class="fas fa-cogs"></i> Generate
@@ -131,9 +158,9 @@
 			</div>
 		</div>
 	</div>
+
 	<!-- Load from LocalStorage Modal -->
-	<div class="modal fade" id="localStorageLoadModal" tabindex="-1" aria-labelledby="localStorageLoadModalLabel"
-	     aria-hidden="true">
+	<div class="modal fade" id="localStorageLoadModal" tabindex="-1" aria-labelledby="localStorageLoadModalLabel" aria-hidden="true">
 		<div class="modal-dialog modal-lg">
 			<div class="modal-content">
 				<div class="modal-header">
@@ -159,8 +186,7 @@
 		<button id="saveToStorageBtn" class="btn btn-success">
 			<i class="fas fa-save"></i> Save to LocalStorage
 		</button>
-		<button id="loadFromStorageBtn" class="btn btn-warning" data-bs-toggle="modal"
-		        data-bs-target="#localStorageLoadModal">
+		<button id="loadFromStorageBtn" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#localStorageLoadModal">
 			<i class="fas fa-upload"></i> Load from LocalStorage
 		</button>
 		<button id="toggleTextareaBtn" class="btn btn-secondary">
@@ -213,6 +239,14 @@
 
 	<audio id="audioPlayer" style="display: none;"></audio>
 	<div id="statusMessage" class="alert alert-info" style="display:none;"></div>
+
+	<!-- Hold Spinner Overlay -->
+	<div id="holdSpinnerOverlay" style="display: none;">
+		<div id="holdSpinner">
+			<span id="holdSpinnerProgressText">0%</span>
+		</div>
+	</div>
+
 </div>
 
 <script src="public/vendor/bootstrap5.3.5/js/bootstrap.bundle.min.js"></script>

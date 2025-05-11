@@ -17,13 +17,34 @@ document.addEventListener('DOMContentLoaded', () => {
 	const audioPlayer = document.getElementById('audioPlayer');
 	const statusMessage = document.getElementById('statusMessage');
 	
+	// New UI elements for settings
+	const statusVerbositySelect = document.getElementById('statusVerbositySelect');
+	const speakNextHoldDurationInput = document.getElementById('speakNextHoldDuration');
+	const togglePlayAllBtnSwitch = document.getElementById('togglePlayAllBtnSwitch');
+	const holdSpinnerOverlay = document.getElementById('holdSpinnerOverlay');
+	const holdSpinner = document.getElementById('holdSpinner');
+	const holdSpinnerProgressText = document.getElementById('holdSpinnerProgressText');
+	
 	let currentTextPosition = 0;
 	let audioCache = {}; // Store { textHash: audioUrl }
 	let isPlaying = false;
 	let playAllAbortController = null;
 	let newTextLoadedForSinglePlay = true;
 	
+	// Settings variables
+	let statusVerbosity = 'all'; // 'all', 'errors', 'none'
+	
+	// Hold-to-activate variables for Speak Next button
+	let holdTimeoutId = null;
+	let holdStartTime = 0;
+	let holdAnimationId = null;
+	let isHoldingSpeakNext = false;
+	
+	
 	const showStatus = (message, type = 'info', duration = 3000) => {
+		if (statusVerbosity === 'none') return;
+		if (statusVerbosity === 'errors' && type !== 'danger' && type !== 'warning') return;
+		
 		statusMessage.textContent = message;
 		statusMessage.className = `alert alert-${type} mt-2`;
 		statusMessage.style.display = 'block';
@@ -33,6 +54,19 @@ document.addEventListener('DOMContentLoaded', () => {
 			}, duration);
 		}
 	};
+	
+	// Event Listeners for new settings
+	statusVerbositySelect.addEventListener('change', (e) => {
+		statusVerbosity = e.target.value;
+		showStatus(`Status messages set to: ${statusVerbosity}`, 'info', 1500);
+	});
+	
+	togglePlayAllBtnSwitch.addEventListener('change', (e) => {
+		playAllBtn.style.display = e.target.checked ? 'inline-block' : 'none';
+	});
+	// Initialize Play All button visibility based on switch
+	playAllBtn.style.display = togglePlayAllBtnSwitch.checked ? 'inline-block' : 'none';
+	
 	
 	toggleTextareaBtn.addEventListener('click', () => {
 		if (mainTextarea.style.display === 'none') {
@@ -110,16 +144,19 @@ document.addEventListener('DOMContentLoaded', () => {
 			savedTextsList.innerHTML = '<li class="list-group-item">No texts saved yet.</li>';
 			return;
 		}
-		texts.sort((a, b) => b.id - a.id);
+		texts.sort((a, b) => b.id - a.id); // Sort by newest first
 		texts.forEach(item => {
 			const li = document.createElement('li');
 			li.className = 'list-group-item';
+			
 			const textPreview = document.createElement('span');
 			textPreview.className = 'text-preview';
 			textPreview.textContent = `${item.name}`;
 			textPreview.title = `Preview: ${item.text.substring(0, 200).replace(/\n/g, ' ')}...`;
+			
 			const btnGroup = document.createElement('div');
 			btnGroup.className = 'btn-group';
+			
 			const loadBtn = document.createElement('button');
 			loadBtn.className = 'btn btn-sm btn-outline-primary';
 			loadBtn.innerHTML = '<i class="fas fa-download"></i> Load';
@@ -130,6 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
 				bootstrap.Modal.getInstance(document.getElementById('localStorageLoadModal')).hide();
 				showStatus(`Text "${item.name}" loaded.`, 'success');
 			};
+			
 			const deleteBtn = document.createElement('button');
 			deleteBtn.className = 'btn btn-sm btn-outline-danger ms-2';
 			deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Delete';
@@ -137,7 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
 				if (confirm(`Are you sure you want to delete "${item.name}"?`)) {
 					const updatedTexts = texts.filter(t => t.id !== item.id);
 					saveTexts(updatedTexts);
-					populateLoadModal();
+					populateLoadModal(); // Refresh the list
 					showStatus(`Text "${item.name}" deleted.`, 'info');
 				}
 			};
@@ -148,11 +186,12 @@ document.addEventListener('DOMContentLoaded', () => {
 			savedTextsList.appendChild(li);
 		});
 	};
+	
 	document.getElementById('localStorageLoadModal').addEventListener('show.bs.modal', populateLoadModal);
 	
 	// --- Core Chunking Logic ---
 	const _extractChunkInternal = (textToProcess, wordsPerChunkTarget) => {
-		let chunkEndIndex = -1; // Initialize to -1 to indicate no valid end found yet
+		let chunkEndIndex = -1;
 		let wordsInChunk = 0;
 		let inWord = false;
 		let lastWordEndIndex = -1;
@@ -163,7 +202,6 @@ document.addEventListener('DOMContentLoaded', () => {
 		
 		for (let i = 0; i < textToProcess.length; i++) {
 			const char = textToProcess[i];
-			
 			if (char.match(/\S/)) { // Non-whitespace character
 				if (!inWord) {
 					inWord = true;
@@ -176,34 +214,29 @@ document.addEventListener('DOMContentLoaded', () => {
 				}
 			}
 			
-			// Check for punctuation or newline to end chunk
 			if (char === '.' || char === ',' || char === '\n') {
-				if (inWord) { // If punctuation is hit while "in a word" (e.g. "word.")
-					wordsInChunk++; // Count this word
-					inWord = false; // Word ends here
+				if (inWord) {
+					wordsInChunk++;
+					inWord = false;
 				}
-				chunkEndIndex = i; // Include the punctuation
+				chunkEndIndex = i;
 				break;
 			}
 			
-			// Check if word count is met
-			if (wordsInChunk >= wordsPerChunkTarget) {
-				chunkEndIndex = lastWordEndIndex; // End of the last full word
+			if (wordsInChunk >= wordsPerChunkTarget && lastWordEndIndex !== -1) {
+				// Ensure we end at the end of a word if target is met
+				chunkEndIndex = lastWordEndIndex;
 				break;
 			}
-			
-			// If no break condition met yet, the potential end is the current character
-			chunkEndIndex = i;
+			chunkEndIndex = i; // Default to current char if no other break
 		}
 		
-		// After loop, if still inWord (text ends mid-word, or loop finished before space after last word)
-		if (inWord) {
+		if (inWord) { // If loop ends while in a word (e.g. end of textToProcess)
 			wordsInChunk++;
 		}
 		
-		// If loop finished naturally (no break), chunkEndIndex is already the last char index.
-		// If a break happened, chunkEndIndex is set.
-		// If textToProcess was very short (e.g., one word less than target), chunkEndIndex is last char.
+		// If chunkEndIndex is still -1 (e.g. very short text, no breaks found), take whole string
+		if (chunkEndIndex === -1) chunkEndIndex = textToProcess.length -1;
 		
 		const chunkText = textToProcess.substring(0, chunkEndIndex + 1);
 		return {text: chunkText, length: chunkText.length};
@@ -225,7 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
 		const wordsToRead = parseInt(wordsPerChunkInput.value) || 10;
 		const remainingText = fullText.substring(currentTextPosition);
 		
-		if (remainingText.trim() === "") { // Handle if only whitespace remains
+		if (remainingText.trim() === "") {
 			currentTextPosition = fullText.length;
 			showStatus('End of text reached (trailing whitespace).', 'info');
 			newTextLoadedForSinglePlay = true;
@@ -235,21 +268,16 @@ document.addEventListener('DOMContentLoaded', () => {
 		const chunkResult = _extractChunkInternal(remainingText, wordsToRead);
 		
 		if (chunkResult.text.trim() === "") {
-			// If the extracted chunk is all whitespace, try to advance past it.
-			// This might happen if _extractChunkInternal is given e.g. "   " and stops early.
 			if (chunkResult.length > 0 && currentTextPosition + chunkResult.length < fullText.length) {
 				currentTextPosition += chunkResult.length;
 				return getNextChunk(); // Recursively get the next actual content chunk
 			}
-			// Otherwise, no meaningful chunk found or end of text.
-			currentTextPosition = fullText.length; // Ensure we are at the end
+			currentTextPosition = fullText.length;
 			newTextLoadedForSinglePlay = true;
-			return null;
+			return null; // No meaningful chunk found or end of text.
 		}
-		
 		return {text: chunkResult.text, newPosition: currentTextPosition + chunkResult.length};
 	};
-	
 	
 	const simpleHash = (str) => {
 		let hash = 0;
@@ -266,7 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
 		audioPlayer.play()
 			.then(() => {
 				isPlaying = true;
-				speakNextBtn.disabled = true;
+				speakNextBtn.disabled = true; // Disable during playback
 				playAllBtn.disabled = true;
 				stopPlaybackBtn.style.display = 'inline-block';
 				if (onPlayStartCallback) onPlayStartCallback();
@@ -280,6 +308,7 @@ document.addEventListener('DOMContentLoaded', () => {
 				stopPlaybackBtn.style.display = 'none';
 				if (onEndedCallback) onEndedCallback(error);
 			});
+		
 		audioPlayer.onended = () => {
 			isPlaying = false;
 			speakNextBtn.disabled = false;
@@ -299,20 +328,28 @@ document.addEventListener('DOMContentLoaded', () => {
 	};
 	
 	const stopCurrentPlayback = () => {
-		if (!isPlaying) return;
+		if (!isPlaying && !playAllAbortController) return; // No active playback or abortable process
+		
 		audioPlayer.pause();
 		audioPlayer.currentTime = 0;
-		audioPlayer.src = "";
+		audioPlayer.src = ""; // Clear source
 		isPlaying = false;
+		
+		// Re-enable buttons
 		speakNextBtn.disabled = false;
 		playAllBtn.disabled = false;
 		stopPlaybackBtn.style.display = 'none';
+		
 		document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
+		
 		if (playAllAbortController) {
 			playAllAbortController.abort();
-			playAllAbortController = null;
+			playAllAbortController = null; // Clear the controller
 		}
+		// If speak next hold was active, cancel it
+		cancelSpeakNextHold();
 	};
+	
 	stopPlaybackBtn.addEventListener('click', stopCurrentPlayback);
 	
 	const getAndPlayAudio = async (textChunk, onEndedCallback, onPlayStartCallback) => {
@@ -329,7 +366,7 @@ document.addEventListener('DOMContentLoaded', () => {
 			return;
 		}
 		
-		showStatus(`Requesting TTS for: "${trimmedTextChunk.substring(0, 30)}..."`, 'info', null);
+		showStatus(`Requesting TTS for: "${trimmedTextChunk.substring(0, 30)}..."`, 'info', null); // No auto-hide
 		speakNextBtn.disabled = true;
 		playAllBtn.disabled = true;
 		
@@ -339,8 +376,10 @@ document.addEventListener('DOMContentLoaded', () => {
 			formData.append('text_chunk', trimmedTextChunk);
 			formData.append('voice', voiceSelect.value);
 			formData.append('volume', volumeInput.value);
+			
 			const response = await fetch(window.location.href, {method: 'POST', body: formData});
 			const result = await response.json();
+			
 			if (result.success && result.fileUrl) {
 				audioCache[chunkHash] = result.fileUrl;
 				showStatus('TTS generated. Playing...', 'success', 1500);
@@ -360,14 +399,14 @@ document.addEventListener('DOMContentLoaded', () => {
 		}
 	};
 	
-	speakNextBtn.addEventListener('click', () => {
+	// --- Speak Next Chunk Logic (with Hold-to-Activate) ---
+	const executeSpeakNextAction = () => {
 		if (isPlaying) return;
-		stopCurrentPlayback();
+		stopCurrentPlayback(); // Stop any previous playback first
 		
 		const chunkData = getNextChunk(); // Returns { text: "original chunk", newPosition: pos }
-		
 		if (chunkData && chunkData.text.trim() !== "") {
-			currentTextPosition = chunkData.newPosition; // Update position as chunk is taken
+			currentTextPosition = chunkData.newPosition;
 			const chunkId = 'chunk-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
 			
 			getAndPlayAudio(
@@ -376,17 +415,14 @@ document.addEventListener('DOMContentLoaded', () => {
 					const currentChunkSpan = document.getElementById(chunkId);
 					if (currentChunkSpan) currentChunkSpan.classList.remove('highlight');
 				},
-				() => { // onPlayStart (this is when audio actually starts)
+				() => { // onPlayStart
 					if (newTextLoadedForSinglePlay) {
 						displayText.innerHTML = '';
 						newTextLoadedForSinglePlay = false;
 					}
-					// Use chunkData.text (original spacing, untrimmed) for display
 					const newChunkHtml = `<span id="${chunkId}">${chunkData.text.replace(/\n/g, '<br>')}</span>`;
 					displayText.insertAdjacentHTML('beforeend', newChunkHtml);
-					// If you want a space between chunks that don't end with a space or newline:
-					// displayText.insertAdjacentHTML('beforeend', ' ');
-					
+					// displayText.insertAdjacentHTML('beforeend', ' '); // Optional: space between chunks
 					displayText.scrollTop = displayText.scrollHeight;
 					
 					document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
@@ -395,26 +431,101 @@ document.addEventListener('DOMContentLoaded', () => {
 				}
 			);
 		} else {
-			// getNextChunk handles "end of text" or empty textarea messages and resets.
 			if (mainTextarea.value.trim().length > 0 && currentTextPosition === 0 && newTextLoadedForSinglePlay) {
-				// End of text was reached, and user clicks again.
-				// newTextLoadedForSinglePlay is true, so display will clear.
-				// getNextChunk will be called again if they click, and it will start from beginning.
-				displayText.innerHTML = "End of text. Click again to restart or load new text.";
+				displayText.innerHTML = "End of text. Click 'Speak Next Chunk' to restart or load new text.";
 			} else if (mainTextarea.value.trim().length === 0) {
 				displayText.innerHTML = "Textarea is empty. Please enter or generate text.";
 			} else if (!chunkData || chunkData.text.trim() === "") {
-				// This case implies end of text or no more valid chunks.
-				// getNextChunk should have shown a status.
 				displayText.innerHTML = "End of text. Load new text or click 'Speak Next Chunk' to restart.";
 			}
 		}
+	};
+	
+	const updateHoldSpinner = () => {
+		if (!isHoldingSpeakNext) return;
+		
+		const holdDuration = parseInt(speakNextHoldDurationInput.value) || 0;
+		const elapsed = Date.now() - holdStartTime;
+		const progress = Math.min(100, (elapsed / holdDuration) * 100);
+		
+		holdSpinner.style.background = `conic-gradient(dodgerblue ${progress * 3.6}deg, #444 ${progress * 3.6}deg)`;
+		holdSpinnerProgressText.textContent = `${Math.round(progress)}%`;
+		
+		if (progress >= 100) {
+			cancelSpeakNextHold(false); // Don't reset isHoldingSpeakNext yet
+			executeSpeakNextAction();
+			isHoldingSpeakNext = false; // Now reset
+		} else {
+			holdAnimationId = requestAnimationFrame(updateHoldSpinner);
+		}
+	};
+	
+	const cancelSpeakNextHold = (resetIsHolding = true) => {
+		if (holdAnimationId) cancelAnimationFrame(holdAnimationId);
+		holdAnimationId = null;
+		holdSpinnerOverlay.style.display = 'none';
+		holdSpinner.style.background = 'conic-gradient(dodgerblue 0deg, #444 0deg)';
+		holdSpinnerProgressText.textContent = '0%';
+		if(resetIsHolding) isHoldingSpeakNext = false;
+	};
+	
+	speakNextBtn.addEventListener('mousedown', (e) => {
+		if (e.button !== 0 || isPlaying || isHoldingSpeakNext) return; // Only left click, not if already playing/holding
+		isHoldingSpeakNext = true;
+		holdStartTime = Date.now();
+		const holdDuration = parseInt(speakNextHoldDurationInput.value) || 0;
+		
+		if (holdDuration === 0) { // If duration is 0, execute immediately
+			isHoldingSpeakNext = false;
+			executeSpeakNextAction();
+			return;
+		}
+		
+		holdSpinnerOverlay.style.display = 'flex';
+		updateHoldSpinner(); // Start animation loop
 	});
+	speakNextBtn.addEventListener('touchstart', (e) => {
+		if (isPlaying || isHoldingSpeakNext) return;
+		e.preventDefault(); // Prevent mouse event firing after touch
+		isHoldingSpeakNext = true;
+		holdStartTime = Date.now();
+		const holdDuration = parseInt(speakNextHoldDurationInput.value) || 0;
+		
+		if (holdDuration === 0) {
+			isHoldingSpeakNext = false;
+			executeSpeakNextAction();
+			return;
+		}
+		
+		holdSpinnerOverlay.style.display = 'flex';
+		updateHoldSpinner();
+	}, { passive: false });
+	
+	const releaseSpeakNextHandler = () => {
+		if (isHoldingSpeakNext) {
+			cancelSpeakNextHold();
+		}
+	};
+	document.addEventListener('mouseup', releaseSpeakNextHandler);
+	document.addEventListener('touchend', releaseSpeakNextHandler);
+	document.addEventListener('touchcancel', releaseSpeakNextHandler);
+	// Also cancel if mouse leaves button while holding (optional, but good UX)
+	speakNextBtn.addEventListener('mouseleave', () => {
+		if (isHoldingSpeakNext) {
+			// Check if mouse button is still pressed (e.g. dragging off)
+			if (!(event.buttons & 1)) { // If primary button is NOT pressed
+				cancelSpeakNextHold();
+			}
+		}
+	});
+	
 	
 	mainTextarea.addEventListener('input', () => {
 		currentTextPosition = 0;
 		newTextLoadedForSinglePlay = true;
 		displayText.innerHTML = "Text changed. Click 'Speak Next Chunk' or 'Play All'.";
+		stopCurrentPlayback(); // Stop any active playback if text changes
+		audioCache = {}; // Clear cache as text changed
 	});
 	
 	const playAllChunks = async () => {
@@ -422,8 +533,8 @@ document.addEventListener('DOMContentLoaded', () => {
 		stopCurrentPlayback();
 		playAllAbortController = new AbortController();
 		const signal = playAllAbortController.signal;
-		const fullText = mainTextarea.value;
 		
+		const fullText = mainTextarea.value;
 		if (!fullText.trim()) {
 			showStatus('Textarea is empty.', 'warning');
 			return;
@@ -431,50 +542,71 @@ document.addEventListener('DOMContentLoaded', () => {
 		
 		displayText.innerHTML = ''; // Clear display area initially
 		let tempPosition = 0;
-		const chunksToPlay = [];
+		const chunksToPlay = []; // Stores {text: "trimmed for tts", originalChunk: "original", id: "chunkId"}
 		let highlightedTextHtml = "";
-		let chunkIndex = 0;
+		let displayChunkIndex = 0; // Used for generating unique IDs for all spans
 		
 		while (tempPosition < fullText.length) {
 			const wordsToRead = parseInt(wordsPerChunkInput.value) || 10;
 			const remainingTextForPlayAll = fullText.substring(tempPosition);
 			
-			if (remainingTextForPlayAll.trim() === "") break;
-			
-			const chunkResultPlayAll = _extractChunkInternal(remainingTextForPlayAll, wordsToRead);
-			let originalChunkText = chunkResultPlayAll.text;
-			
-			if (originalChunkText.trim() === "") {
-				if (chunkResultPlayAll.length > 0) {
-					tempPosition += chunkResultPlayAll.length;
-					continue;
-				}
+			if (remainingTextForPlayAll.trim() === "" && tempPosition < fullText.length) {
+				// If only whitespace remains, add it to display and break
+				highlightedTextHtml += remainingTextForPlayAll.replace(/\n/g, '<br>');
 				break;
 			}
+			if (remainingTextForPlayAll === "") break;
 			
-			const chunkId = `playall-chunk-${chunkIndex}`;
-			chunksToPlay.push({
-				text: originalChunkText.trim(),
-				originalChunk: originalChunkText,
-				id: chunkId
-			});
+			
+			const chunkResultPlayAll = _extractChunkInternal(remainingTextForPlayAll, wordsToRead);
+			
+			if (chunkResultPlayAll.length === 0 && remainingTextForPlayAll.length > 0) {
+				// Safety break for rare _extractChunkInternal issues with certain inputs
+				console.warn("PlayAll: _extractChunkInternal returned empty for non-empty input. Appending rest.");
+				highlightedTextHtml += remainingTextForPlayAll.substring(0).replace(/\n/g, '<br>');
+				tempPosition += remainingTextForPlayAll.length;
+				break;
+			}
+			if (chunkResultPlayAll.length === 0) break; // End of text or no more processable content
+			
+			let originalChunkText = chunkResultPlayAll.text;
+			const chunkId = `playall-chunk-${displayChunkIndex}`;
+			
+			// Add all chunks (including whitespace-only) to the display HTML
 			highlightedTextHtml += `<span id="${chunkId}">${originalChunkText.replace(/\n/g, '<br>')}</span>`;
 			
+			if (originalChunkText.trim() !== "") {
+				// Only add non-whitespace chunks to the list of chunks to be spoken
+				chunksToPlay.push({
+					text: originalChunkText.trim(), // Trimmed text for TTS
+					originalChunk: originalChunkText, // Keep original for reference
+					id: chunkId // This ID will be used for highlighting
+				});
+			}
+			
 			tempPosition += chunkResultPlayAll.length;
-			chunkIndex++;
+			displayChunkIndex++;
 		}
 		
+		// Set the full text display once before starting playback
+		displayText.innerHTML = highlightedTextHtml;
 		if (chunksToPlay.length === 0) {
 			showStatus('No speakable chunks found.', 'info');
-			displayText.innerHTML = "No speakable content found in the textarea.";
+			if(displayText.innerHTML.trim() === "") displayText.innerHTML = "No speakable content found in the textarea.";
+			// Reset buttons if no chunks to play
+			speakNextBtn.disabled = false;
+			playAllBtn.disabled = false;
+			stopPlaybackBtn.style.display = 'none';
+			playAllAbortController = null;
 			return;
 		}
 		
-		isPlaying = true;
+		isPlaying = true; // Set isPlaying true for the whole "Play All" sequence
 		speakNextBtn.disabled = true;
 		playAllBtn.disabled = true;
 		stopPlaybackBtn.style.display = 'inline-block';
-		let isFullTextInDOM = false;
+		
+		let currentOverallTextPosition = 0; // For updating main currentTextPosition after playAll
 		
 		for (let i = 0; i < chunksToPlay.length; i++) {
 			if (signal.aborted) {
@@ -482,6 +614,20 @@ document.addEventListener('DOMContentLoaded', () => {
 				break;
 			}
 			const currentChunkData = chunksToPlay[i];
+			
+			// Update currentTextPosition based on the original chunk length before playing it
+			// Find the start of this chunk in the original fullText
+			let chunkStartIndexInFullText = fullText.indexOf(currentChunkData.originalChunk, currentOverallTextPosition);
+			if(chunkStartIndexInFullText === -1 && i === 0) chunkStartIndexInFullText = 0; // First chunk might be slightly different due to processing
+			
+			if(chunkStartIndexInFullText !== -1) {
+				currentOverallTextPosition = chunkStartIndexInFullText + currentChunkData.originalChunk.length;
+			} else {
+				// Fallback: advance by length of original chunk if not found (less accurate)
+				currentOverallTextPosition += currentChunkData.originalChunk.length;
+			}
+			
+			
 			try {
 				await new Promise((resolve, reject) => {
 					if (signal.aborted) {
@@ -489,17 +635,15 @@ document.addEventListener('DOMContentLoaded', () => {
 						return;
 					}
 					getAndPlayAudio(
-						currentChunkData.text,
-						(err) => {
+						currentChunkData.text, // Trimmed text for TTS
+						(err) => { // onEnded
 							const playedChunkSpan = document.getElementById(currentChunkData.id);
 							if (playedChunkSpan) playedChunkSpan.classList.remove('highlight');
-							if (err) reject(err); else resolve();
+							if (err) reject(err);
+							else resolve();
 						},
-						() => {
-							if (!isFullTextInDOM) {
-								displayText.innerHTML = highlightedTextHtml;
-								isFullTextInDOM = true;
-							}
+						() => { // onPlayStart
+							// Full text is already in DOM. Just highlight.
 							document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
 							const currentChunkSpanInDOM = document.getElementById(currentChunkData.id);
 							if (currentChunkSpanInDOM) {
@@ -509,7 +653,7 @@ document.addEventListener('DOMContentLoaded', () => {
 						}
 					);
 					signal.addEventListener('abort', () => {
-						stopCurrentPlayback(); // Ensure audio stops immediately on abort
+						// stopCurrentPlayback(); // This is now called by the main stopPlaybackBtn handler
 						reject(new DOMException('Aborted', 'AbortError'));
 					});
 				});
@@ -520,28 +664,33 @@ document.addEventListener('DOMContentLoaded', () => {
 					showStatus(`Error playing chunk ${i + 1}: ${error.message}`, 'danger');
 					console.error(`Error playing chunk ${i + 1}:`, error);
 				}
-				break;
+				break; // Stop playing further chunks on error or abort
 			}
 		}
 		
-		isPlaying = false;
+		isPlaying = false; // Reset isPlaying after loop finishes or breaks
 		speakNextBtn.disabled = false;
 		playAllBtn.disabled = false;
 		stopPlaybackBtn.style.display = 'none';
 		
 		if (!signal.aborted && chunksToPlay.length > 0) {
 			showStatus('Finished playing all chunks.', 'success');
-			// displayText.innerHTML = "Playback complete. Load new text or play again."; // Keep the full text displayed
+			currentTextPosition = fullText.length; // Mark as end of text
 		} else if (chunksToPlay.length === 0 && !signal.aborted) {
-			displayText.innerHTML = "No content to play.";
+			// Message already shown if no speakable chunks
 		}
+		
 		if (signal.aborted) {
-			// Text is already in display, just ensure highlighting is off
 			document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
+			// currentTextPosition should reflect where it stopped.
+			// The currentOverallTextPosition should be close.
+			currentTextPosition = Math.min(currentOverallTextPosition, fullText.length);
+			
 		}
 		
 		playAllAbortController = null;
-		newTextLoadedForSinglePlay = true;
+		newTextLoadedForSinglePlay = true; // Ready for a fresh "Speak Next" or "Play All"
 	};
+	
 	playAllBtn.addEventListener('click', playAllChunks);
 });
