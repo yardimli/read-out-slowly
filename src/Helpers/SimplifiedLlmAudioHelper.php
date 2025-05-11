@@ -417,7 +417,7 @@
 					return [
 						'success' => true,
 						'storage_path' => $relativeRawStoragePath,
-						'fileUrl' => rtrim(self::$appUrl, '/') . '/' . $relativeRawStoragePath,
+						'fileUrl' => rtrim(self::$appUrl, '/') . '/' . (SimplifiedLlmAudioHelper::getEnvVar('PUBLIC_STORAGE_PATH') ?: 'public') . "/" . $relativeRawStoragePath,
 						'message' => 'OpenAI TTS generated, but amplification failed. Raw audio provided.',
 					];
 				}
@@ -426,7 +426,7 @@
 				return [
 					'success' => true,
 					'storage_path' => $relativeAmplifiedStoragePath,
-					'fileUrl' => rtrim(self::$appUrl, '/') . '/' . $relativeAmplifiedStoragePath,
+					'fileUrl' => rtrim(self::$appUrl, '/') . '/' . (SimplifiedLlmAudioHelper::getEnvVar('PUBLIC_STORAGE_PATH') ?: 'public'). "/" . $relativeAmplifiedStoragePath,
 					'message' => 'OpenAI TTS generated and amplified successfully.',
 				];
 
