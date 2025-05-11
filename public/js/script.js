@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	let newTextLoadedForSinglePlay = true;
 	
 	// Settings variables
-	let statusVerbosity = 'error'; // 'all', 'errors', 'none'
+	let statusVerbosity = 'errors'; // 'all', 'errors', 'none'
 	
 	// Hold-to-activate variables for Speak Next button
 	let holdTimeoutId = null;
