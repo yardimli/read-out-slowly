@@ -70,7 +70,7 @@
 			<div class="row">
 				<div class="col-md-4 mb-3">
 					<label for="displayTextFontSizeInput" class="form-label">Display Font Size (px):</label>
-					<input type="number" id="displayTextFontSizeInput" class="form-control" value="16" min="8" max="48" step="1">
+					<input type="number" id="displayTextFontSizeInput" class="form-control" value="40" min="8" max="100" step="1">
 				</div>
 			</div>
 		</div>
