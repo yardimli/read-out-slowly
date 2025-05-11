@@ -299,6 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	};
 	
 	const stopCurrentPlayback = () => {
+		if (!isPlaying) return;
 		audioPlayer.pause();
 		audioPlayer.currentTime = 0;
 		audioPlayer.src = "";
