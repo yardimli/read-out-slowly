@@ -80,9 +80,9 @@ body.playback-controls-active > .container {
 
 #displayText {
     white-space: pre-wrap; /* Preserve line breaks and spaces */
-    min-height: 100px;     /* Minimum height */
-    max-height: 250px;    /* Maximum height before scrolling */
-    overflow-y: auto;      /* Add scrollbar if content exceeds max-height */
+    min-height: 250px;     /* Minimum height */
+    /*max-height: 250px;    !* Maximum height before scrolling *!*/
+    /*overflow-y: auto;      !* Add scrollbar if content exceeds max-height *!*/
     /* font-size will be set by JS. Default browser font-size will apply initially. */
     /* Text color will be default or from dark mode theme */
     /* card-body provides padding */

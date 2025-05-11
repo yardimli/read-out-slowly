@@ -233,6 +233,8 @@ class PlaybackManager {
 	stopCurrentPlayback(fromPregenerate = false) {
 		const wasPlayingOrPregenerating = this.isPlaying || this.playAllAbortController || (fromPregenerate && this.pregenerateAbortController);
 		
+		if (!this.isPlaying) return; // Nothing to stop
+		
 		this.elements.audioPlayer.pause();
 		this.elements.audioPlayer.currentTime = 0;
 		this.elements.audioPlayer.src = ""; // Release audio resource
@@ -360,7 +362,11 @@ class PlaybackManager {
 					}
 					const newChunkHtml = `<span id="${chunkId}">${chunkData.text.replace(/\n/g, '<br>')}</span>`;
 					this.elements.displayText.insertAdjacentHTML('beforeend', newChunkHtml);
-					this.elements.displayText.scrollTop = this.elements.displayText.scrollHeight;
+					
+					// Scroll #displayText itself to its bottom (useful if it has its own scrollbar)
+					//this.elements.displayText.scrollTop = this.elements.displayText.scrollHeight;
+					
+					window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
 					
 					document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
 					const currentChunkSpan = document.getElementById(chunkId);
