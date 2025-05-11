@@ -417,7 +417,7 @@
 					return [
 						'success' => true,
 						'storage_path' => $relativeRawStoragePath,
-						'fileUrl' => rtrim(self::$appUrl, '/') . '/' . ltrim(self::$publicStorageBasePath, '/') . '/' . $relativeRawStoragePath,
+						'fileUrl' => rtrim(self::$appUrl, '/') . '/' . $relativeRawStoragePath,
 						'message' => 'OpenAI TTS generated, but amplification failed. Raw audio provided.',
 					];
 				}
