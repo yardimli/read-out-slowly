@@ -12,7 +12,7 @@
 	// These paths are relative to this index.php script
 	$config = [
 		'log_directory' => __DIR__ . '/' . ($_ENV['LOG_DIRECTORY'] ?? 'storage/logs'),
-		'public_storage_path' => __DIR__ . '/' . ($_ENV['PUBLIC_STORAGE_PATH'] ?? 'public'),
+		'public_storage_path' => __DIR__ . '/' . ($_ENV['PUBLIC_STORAGE_PATH_BASEDIR'] ?? 'public'), // Base directory for storage
 		'app_url' => $_ENV['APP_URL'] ?? 'http://localhost:8000',
 		'ffmpeg_path' => $_ENV['FFMPEG_PATH'] ?? 'ffmpeg'
 	];
@@ -30,8 +30,8 @@
 				$prompt = $_POST['prompt'] ?? 'Write a short, interesting paragraph about space exploration.';
 				$system_prompt = "You are a helpful assistant that writes engaging content based on user prompts. Keep responses concise unless asked for more detail.";
 				$llm_model = $_ENV['DEFAULT_LLM_FOR_SIMPLE_HELPER'] ?? 'mistralai/mistral-7b-instruct';
-
 				$llmResponse = SimplifiedLlmAudioHelper::sendTextToLlm($llm_model, $system_prompt, $prompt, 1);
+
 				if ($llmResponse['success']) {
 					$response = ['success' => true, 'text' => $llmResponse['content']];
 				} else {
@@ -44,10 +44,26 @@
 					exit;
 				}
 				$voice = $_POST['voice'] ?? 'nova';
-				$filenameBase = 'ros_chunk_' . substr(md5($textChunk . $voice), 0, 12);
 				$volume = (float)($_POST['volume'] ?? 4.0);
 
+				// Generate a filename base from voice and sanitized text
+				$sanitizedText = strtolower($textChunk);
+				$sanitizedText = preg_replace('/[^\w\s-]/', '', $sanitizedText); // Allow words, spaces, hyphens
+				$sanitizedText = preg_replace('/\s+/', '-', $sanitizedText); // Replace spaces with hyphens
+				$sanitizedText = preg_replace('/-+/', '-', $sanitizedText);   // Collapse multiple hyphens
+				$sanitizedText = trim($sanitizedText, '-');
+				if (strlen($sanitizedText) > 50) { // Max length for text part of filename
+					$sanitizedText = substr($sanitizedText, 0, 50);
+					$sanitizedText = trim($sanitizedText, '-'); // Trim again if cut left a hyphen
+				}
+				if (empty($sanitizedText)) { // Handle cases where text becomes empty after sanitization
+					$sanitizedText = 'tts-' . substr(md5($textChunk), 0, 8);
+				}
+				$filenameBase = $voice . '-' . $sanitizedText;
+
+
 				$ttsResponse = SimplifiedLlmAudioHelper::textToSpeechOpenAI($textChunk, $voice, $filenameBase, $volume);
+
 				if ($ttsResponse['success']) {
 					$response = [
 						'success' => true,
@@ -59,10 +75,14 @@
 				}
 			}
 		} catch (Exception $e) {
-			SimplifiedLlmAudioHelper::log('ERROR', 'AJAX Action Exception: ' . $e->getMessage());
+			// Use the static log method from the helper if available, or error_log
+			if (class_exists('App\Helpers\SimplifiedLlmAudioHelper') && method_exists('App\Helpers\SimplifiedLlmAudioHelper', 'log')) {
+				SimplifiedLlmAudioHelper::log('ERROR', 'AJAX Action Exception: ' . $e->getMessage() . ' Trace: ' . $e->getTraceAsString());
+			} else {
+				error_log('AJAX Action Exception: ' . $e->getMessage());
+			}
 			$response = ['success' => false, 'message' => 'Server error: ' . $e->getMessage()];
 		}
-
 		echo json_encode($response);
 		exit;
 	}
@@ -76,7 +96,9 @@
 	<link rel="stylesheet" href="public/vendor/bootstrap5.3.5/css/bootstrap.min.css">
 	<link rel="stylesheet" href="public/vendor/fontawesome-free-6.7.2/css/all.min.css">
 	<style>
-      body { padding-bottom: 100px; }
+      body {
+          padding-bottom: 100px;
+      }
       #displayText {
           font-size: 1.5em;
           padding: 15px;
@@ -224,9 +246,9 @@
 			<i class="fas fa-stop-circle"></i> Stop Playback
 		</button>
 	</div>
+
 	<audio id="audioPlayer" style="display: none;"></audio>
 	<div id="statusMessage" class="alert alert-info" style="display:none;"></div>
-
 </div>
 
 <script src="public/vendor/bootstrap5.3.5/js/bootstrap.bundle.min.js"></script>
@@ -234,16 +256,13 @@
 	document.addEventListener('DOMContentLoaded', () => {
 		const mainTextarea = document.getElementById('mainTextarea');
 		const toggleTextareaBtn = document.getElementById('toggleTextareaBtn');
-
 		const aiPromptInput = document.getElementById('aiPromptInput');
 		const generateAiTextBtn = document.getElementById('generateAiTextBtn');
 		const aiPreviewArea = document.getElementById('aiPreviewArea');
 		const useAiTextBtn = document.getElementById('useAiTextBtn');
-
 		const saveToStorageBtn = document.getElementById('saveToStorageBtn');
-		const loadFromStorageBtn = document.getElementById('loadFromStorageBtn'); // Button that opens the modal
+		// const loadFromStorageBtn = document.getElementById('loadFromStorageBtn'); // Already declared by its use with data-bs-toggle
 		const savedTextsList = document.getElementById('savedTextsList');
-
 		const wordsPerChunkInput = document.getElementById('wordsPerChunkInput');
 		const voiceSelect = document.getElementById('voiceSelect');
 		const volumeInput = document.getElementById('volumeInput');
@@ -258,13 +277,16 @@
 		let audioCache = {}; // Store { textHash: audioUrl }
 		let isPlaying = false;
 		let playAllAbortController = null;
+		let newTextLoadedForSinglePlay = true; // Flag to clear displayText for single chunk play
 
 		const showStatus = (message, type = 'info', duration = 3000) => {
 			statusMessage.textContent = message;
-			statusMessage.className = `alert alert-${type}`;
+			statusMessage.className = `alert alert-${type} mt-2`; // Added mt-2 for spacing
 			statusMessage.style.display = 'block';
 			if (duration) {
-				setTimeout(() => { statusMessage.style.display = 'none'; }, duration);
+				setTimeout(() => {
+					statusMessage.style.display = 'none';
+				}, duration);
 			}
 		};
 
@@ -287,6 +309,7 @@
 				return;
 			}
 			generateAiTextBtn.disabled = true;
+			generateAiTextBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
 			aiPreviewArea.innerHTML = 'Generating... <i class="fas fa-spinner fa-spin"></i>';
 			useAiTextBtn.disabled = true;
 
@@ -294,13 +317,11 @@
 				const formData = new FormData();
 				formData.append('action', 'generate_text_ai');
 				formData.append('prompt', prompt);
-
-				const response = await fetch(window.location.href, { // Post to current page
+				const response = await fetch(window.location.href, {
 					method: 'POST',
 					body: formData
 				});
 				const result = await response.json();
-
 				if (result.success && result.text) {
 					aiPreviewArea.innerHTML = result.text.replace(/\n/g, '<br>');
 					useAiTextBtn.disabled = false;
@@ -313,14 +334,15 @@
 				showStatus('AI generation error: ' + error.message, 'danger');
 			} finally {
 				generateAiTextBtn.disabled = false;
+				generateAiTextBtn.innerHTML = '<i class="fas fa-cogs"></i> Generate';
 			}
 		});
 
 		useAiTextBtn.addEventListener('click', () => {
-			// Get text from preview, converting <br> back to \n for textarea
 			const textToUse = aiPreviewArea.innerHTML.replace(/<br\s*\/?>/gi, '\n');
 			mainTextarea.value = textToUse;
-			currentTextPosition = 0; // Reset position for new text
+			currentTextPosition = 0;
+			newTextLoadedForSinglePlay = true; // Signal to clear displayText on next single play
 			bootstrap.Modal.getInstance(document.getElementById('aiGenerateModal')).hide();
 			showStatus('Text loaded into textarea.', 'success');
 		});
@@ -336,11 +358,13 @@
 				return;
 			}
 			const texts = getSavedTexts();
-			const name = prompt("Enter a name for this text (or leave blank for auto-name):", text.substring(0, 30).replace(/\n/g, ' ') + "...");
+			const defaultName = text.substring(0, 30).replace(/\n/g, ' ') + (text.length > 30 ? "..." : "");
+			const name = prompt("Enter a name for this text:", defaultName);
+			if (name === null) return; // User cancelled prompt
 
 			texts.push({
 				id: Date.now().toString(),
-				name: name || (text.substring(0, 30).replace(/\n/g, ' ') + "..."),
+				name: name || defaultName,
 				text: text
 			});
 			saveTexts(texts);
@@ -349,18 +373,21 @@
 
 		const populateLoadModal = () => {
 			const texts = getSavedTexts();
-			savedTextsList.innerHTML = ''; // Clear previous items
+			savedTextsList.innerHTML = '';
 			if (texts.length === 0) {
 				savedTextsList.innerHTML = '<li class="list-group-item">No texts saved yet.</li>';
 				return;
 			}
+			texts.sort((a,b) => b.id - a.id); // Show newest first
 			texts.forEach(item => {
 				const li = document.createElement('li');
 				li.className = 'list-group-item';
 
 				const textPreview = document.createElement('span');
 				textPreview.className = 'text-preview';
-				textPreview.textContent = `${item.name} (Preview: ${item.text.substring(0, 100).replace(/\n/g, ' ')}...)`;
+				textPreview.textContent = `${item.name}`;
+				textPreview.title = `Preview: ${item.text.substring(0, 200).replace(/\n/g, ' ')}...`;
+
 
 				const btnGroup = document.createElement('div');
 				btnGroup.className = 'btn-group';
@@ -371,6 +398,7 @@
 				loadBtn.onclick = () => {
 					mainTextarea.value = item.text;
 					currentTextPosition = 0;
+					newTextLoadedForSinglePlay = true; // Signal to clear displayText
 					bootstrap.Modal.getInstance(document.getElementById('localStorageLoadModal')).hide();
 					showStatus(`Text "${item.name}" loaded.`, 'success');
 				};
@@ -382,10 +410,11 @@
 					if (confirm(`Are you sure you want to delete "${item.name}"?`)) {
 						const updatedTexts = texts.filter(t => t.id !== item.id);
 						saveTexts(updatedTexts);
-						populateLoadModal(); // Refresh list
+						populateLoadModal();
 						showStatus(`Text "${item.name}" deleted.`, 'info');
 					}
 				};
+
 				btnGroup.appendChild(loadBtn);
 				btnGroup.appendChild(deleteBtn);
 				li.appendChild(textPreview);
@@ -393,31 +422,34 @@
 				savedTextsList.appendChild(li);
 			});
 		};
-
-		// When the modal is shown, populate it
 		document.getElementById('localStorageLoadModal').addEventListener('show.bs.modal', populateLoadModal);
 
 
 		// --- Text Chunking and Speech ---
-		const getWords = (text) => text.trim().split(/\s+/).filter(word => word.length > 0);
-
 		const getNextChunk = () => {
 			const fullText = mainTextarea.value;
-			if (currentTextPosition >= fullText.length) {
-				return null; // No more text
+			if (currentTextPosition >= fullText.length && fullText.length > 0) { // Check fullText.length to allow reset if empty
+				showStatus('End of text reached.', 'info');
+				currentTextPosition = 0; // Reset for next time
+				newTextLoadedForSinglePlay = true; // Allow clearing display if they play again
+				return null;
 			}
+			if (fullText.length === 0) {
+				showStatus('Textarea is empty.', 'warning');
+				return null;
+			}
+
 
 			const wordsToRead = parseInt(wordsPerChunkInput.value) || 10;
 			const remainingText = fullText.substring(currentTextPosition);
 
-			// Split by space or newline to count words, but preserve original spacing for the chunk
 			let wordsInChunk = 0;
 			let chunkEndIndex = 0;
 			let inWord = false;
 
 			for (let i = 0; i < remainingText.length; i++) {
 				const char = remainingText[i];
-				if (char.match(/\s/)) { // Space or newline
+				if (char.match(/\s/)) {
 					if (inWord) {
 						wordsInChunk++;
 					}
@@ -427,32 +459,22 @@
 				}
 				chunkEndIndex = i;
 				if (wordsInChunk >= wordsToRead) {
-					// Find end of current word
-					while(i + 1 < remainingText.length && !remainingText[i+1].match(/\s/)) {
+					while (i + 1 < remainingText.length && !remainingText[i + 1].match(/\s/)) {
 						i++;
 						chunkEndIndex = i;
 					}
 					break;
 				}
 			}
-			// If loop finished and still in word, count it
-			if (inWord && wordsInChunk < wordsToRead) {
+			if (inWord && wordsInChunk < wordsToRead) { // Count last word if loop ends
 				wordsInChunk++;
 			}
 
-
 			let chunk = remainingText.substring(0, chunkEndIndex + 1);
-
-			// If the loop finished because end of text, and we didn't reach wordsToRead, take what's left
-			if (wordsInChunk < wordsToRead && chunkEndIndex === remainingText.length -1) {
-				chunk = remainingText;
-			}
-
-
-			if (chunk.trim() === "") return null; // Avoid empty chunks if only whitespace remains
+			if (chunk.trim() === "") return null;
 
 			const newPosition = currentTextPosition + chunk.length;
-			return { text: chunk.trim(), newPosition: newPosition };
+			return { text: chunk, newPosition: newPosition }; // Return original spacing for display
 		};
 
 		const simpleHash = (str) => {
@@ -460,12 +482,12 @@
 			for (let i = 0; i < str.length; i++) {
 				const char = str.charCodeAt(i);
 				hash = (hash << 5) - hash + char;
-				hash |= 0; // Convert to 32bit integer
+				hash |= 0;
 			}
 			return 'h' + Math.abs(hash).toString(36) + str.length;
 		};
 
-		const playAudio = (url, callback) => {
+		const playAudio = (url, onEndedCallback, onPlayStartCallback) => {
 			audioPlayer.src = url;
 			audioPlayer.play()
 				.then(() => {
@@ -473,6 +495,7 @@
 					speakNextBtn.disabled = true;
 					playAllBtn.disabled = true;
 					stopPlaybackBtn.style.display = 'inline-block';
+					if (onPlayStartCallback) onPlayStartCallback();
 				})
 				.catch(error => {
 					console.error("Error playing audio:", error);
@@ -481,7 +504,7 @@
 					speakNextBtn.disabled = false;
 					playAllBtn.disabled = false;
 					stopPlaybackBtn.style.display = 'none';
-					if (callback) callback(error);
+					if (onEndedCallback) onEndedCallback(error); // Signal error to onEnded
 				});
 
 			audioPlayer.onended = () => {
@@ -489,9 +512,10 @@
 				speakNextBtn.disabled = false;
 				playAllBtn.disabled = false;
 				stopPlaybackBtn.style.display = 'none';
-				displayText.querySelector('.highlight')?.classList.remove('highlight');
-				if (callback) callback();
+				// Highlight removal is handled by caller
+				if (onEndedCallback) onEndedCallback();
 			};
+
 			audioPlayer.onerror = (e) => {
 				console.error("Audio player error:", e);
 				showStatus("Audio player error. Check console.", 'danger');
@@ -499,19 +523,19 @@
 				speakNextBtn.disabled = false;
 				playAllBtn.disabled = false;
 				stopPlaybackBtn.style.display = 'none';
-				if (callback) callback(e);
+				if (onEndedCallback) onEndedCallback(e); // Signal error to onEnded
 			};
 		};
 
 		const stopCurrentPlayback = () => {
 			audioPlayer.pause();
 			audioPlayer.currentTime = 0;
-			audioPlayer.src = ""; // Clear source
+			audioPlayer.src = "";
 			isPlaying = false;
 			speakNextBtn.disabled = false;
 			playAllBtn.disabled = false;
 			stopPlaybackBtn.style.display = 'none';
-			displayText.querySelector('.highlight')?.classList.remove('highlight');
+			document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
 			if (playAllAbortController) {
 				playAllAbortController.abort();
 				playAllAbortController = null;
@@ -519,28 +543,28 @@
 		};
 		stopPlaybackBtn.addEventListener('click', stopCurrentPlayback);
 
-
-		const getAndPlayAudio = async (textChunk, callback) => {
+		const getAndPlayAudio = async (textChunk, onEndedCallback, onPlayStartCallback) => {
 			if (!textChunk || textChunk.trim() === "") {
-				if (callback) callback();
+				if (onEndedCallback) onEndedCallback();
 				return;
 			}
-			const chunkHash = simpleHash(textChunk + voiceSelect.value + volumeInput.value);
+			const trimmedTextChunk = textChunk.trim();
+			const chunkHash = simpleHash(trimmedTextChunk + voiceSelect.value + volumeInput.value);
 
 			if (audioCache[chunkHash]) {
-				showStatus(`Playing cached audio for: "${textChunk.substring(0,30)}..."`, 'info', 1500);
-				playAudio(audioCache[chunkHash], callback);
+				showStatus(`Playing cached audio for: "${trimmedTextChunk.substring(0, 30)}..."`, 'info', 1500);
+				playAudio(audioCache[chunkHash], onEndedCallback, onPlayStartCallback);
 				return;
 			}
 
-			showStatus(`Requesting TTS for: "${textChunk.substring(0,30)}..."`, 'info', null);
+			showStatus(`Requesting TTS for: "${trimmedTextChunk.substring(0, 30)}..."`, 'info', null);
 			speakNextBtn.disabled = true;
 			playAllBtn.disabled = true;
 
 			try {
 				const formData = new FormData();
 				formData.append('action', 'text_to_speech_chunk');
-				formData.append('text_chunk', textChunk);
+				formData.append('text_chunk', trimmedTextChunk); // Send trimmed text
 				formData.append('voice', voiceSelect.value);
 				formData.append('volume', volumeInput.value);
 
@@ -553,17 +577,19 @@
 				if (result.success && result.fileUrl) {
 					audioCache[chunkHash] = result.fileUrl;
 					showStatus('TTS generated. Playing...', 'success', 1500);
-					playAudio(result.fileUrl, callback);
+					playAudio(result.fileUrl, onEndedCallback, onPlayStartCallback);
 				} else {
 					showStatus('TTS Error: ' + (result.message || 'Unknown error'), 'danger');
-					if (callback) callback(new Error(result.message || 'TTS failed'));
+					if (onEndedCallback) onEndedCallback(new Error(result.message || 'TTS failed'));
+					// Re-enable buttons if TTS fails before playAudio is called
 					speakNextBtn.disabled = false;
 					playAllBtn.disabled = false;
 				}
 			} catch (error) {
 				console.error("TTS request error:", error);
 				showStatus('TTS Request Error: ' + error.message, 'danger');
-				if (callback) callback(error);
+				if (onEndedCallback) onEndedCallback(error);
+				// Re-enable buttons on catch
 				speakNextBtn.disabled = false;
 				playAllBtn.disabled = false;
 			}
@@ -571,28 +597,59 @@
 
 		speakNextBtn.addEventListener('click', () => {
 			if (isPlaying) return;
+			stopCurrentPlayback(); // Stop any existing playback before starting new
+
 			const chunkData = getNextChunk();
 			if (chunkData) {
-				displayText.innerHTML = chunkData.text.replace(/\n/g, '<br>');
+				if (newTextLoadedForSinglePlay) {
+					displayText.innerHTML = ''; // Clear display for new text session
+					newTextLoadedForSinglePlay = false;
+				}
+
+				const chunkId = 'chunk-' + Date.now(); // Unique ID for this chunk span
+				// Append new chunk. Use text with original spacing for display.
+				const newChunkHtml = `<span id="${chunkId}">${chunkData.text.replace(/\n/g, '<br>')}</span>`;
+				displayText.insertAdjacentHTML('beforeend', newChunkHtml + '<br>'); // Add space/break after chunk
+				displayText.scrollTop = displayText.scrollHeight; // Scroll to bottom
+
 				currentTextPosition = chunkData.newPosition;
-				getAndPlayAudio(chunkData.text.trim());
+				const currentChunkSpan = document.getElementById(chunkId);
+
+				getAndPlayAudio(chunkData.text.trim(), // Send trimmed text for TTS
+					() => { // onEnded
+						if (currentChunkSpan) currentChunkSpan.classList.remove('highlight');
+					},
+					() => { // onPlayStart
+						document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
+						if (currentChunkSpan) currentChunkSpan.classList.add('highlight');
+					}
+				);
 			} else {
-				showStatus('End of text reached or no text.', 'info');
-				currentTextPosition = 0; // Reset for next time
-				displayText.innerHTML = "End of text. Click again to start from beginning or load new text.";
+				// getNextChunk handles "end of text" message and resets.
+				// If it returned null because textarea is empty, it also shows a message.
+				if(mainTextarea.value.trim().length > 0 && currentTextPosition === 0) {
+					// This means end of text was reached and reset, user clicked again.
+					// newTextLoadedForSinglePlay is true, so it will clear and start over.
+					// Let the next call to getNextChunk handle it.
+				} else if (mainTextarea.value.trim().length === 0) {
+					displayText.innerHTML = "Textarea is empty. Please enter or generate text.";
+				} else {
+					displayText.innerHTML = "End of text. Load new text or click again to restart.";
+				}
 			}
 		});
 
 		mainTextarea.addEventListener('input', () => {
-			currentTextPosition = 0; // Reset if text changes
-			displayText.innerHTML = "Text changed. Click 'Speak Next Chunk' to start reading.";
+			currentTextPosition = 0;
+			newTextLoadedForSinglePlay = true; // Signal to clear displayText on next single play
+			displayText.innerHTML = "Text changed. Click 'Speak Next Chunk' or 'Play All'.";
 		});
 
 		// --- Play All ---
 		const playAllChunks = async () => {
 			if (isPlaying) return;
+			stopCurrentPlayback();
 
-			stopCurrentPlayback(); // Ensure any previous playback is fully stopped
 			playAllAbortController = new AbortController();
 			const signal = playAllAbortController.signal;
 
@@ -602,95 +659,72 @@
 				return;
 			}
 
-			let tempPosition = 0;
-			const chunks = [];
-			const originalChunkObjects = []; // To store {text, originalStart, originalEnd}
+			displayText.innerHTML = ''; // Clear display area initially
 
-			// Prepare chunks
+			let tempPosition = 0;
+			const chunksToPlay = []; // Array of {text: "trimmed chunk text", originalChunk: "chunk with original spacing", id: "span-id"}
+			let highlightedTextHtml = ""; // To build the full text with spans
+
+			// 1. Prepare all chunks and the HTML for display
+			let chunkIndex = 0;
 			while(tempPosition < fullText.length) {
 				const wordsToRead = parseInt(wordsPerChunkInput.value) || 10;
 				const remainingText = fullText.substring(tempPosition);
-
 				let wordsInChunk = 0;
 				let chunkEndIndex = 0;
 				let inWord = false;
-				let currentChunkOriginalStart = tempPosition;
 
 				for (let i = 0; i < remainingText.length; i++) {
 					const char = remainingText[i];
-					if (char.match(/\s/)) {
-						if (inWord) wordsInChunk++;
-						inWord = false;
-					} else {
-						inWord = true;
-					}
+					if (char.match(/\s/)) { if (inWord) wordsInChunk++; inWord = false; }
+					else { inWord = true; }
 					chunkEndIndex = i;
 					if (wordsInChunk >= wordsToRead) {
-						while(i + 1 < remainingText.length && !remainingText[i+1].match(/\s/)) {
-							i++;
-							chunkEndIndex = i;
-						}
+						while(i + 1 < remainingText.length && !remainingText[i+1].match(/\s/)) { i++; chunkEndIndex = i; }
 						break;
 					}
 				}
 				if (inWord && wordsInChunk < wordsToRead) wordsInChunk++;
 
-				let chunkText = remainingText.substring(0, chunkEndIndex + 1);
-				if (wordsInChunk < wordsToRead && chunkEndIndex === remainingText.length -1) {
-					chunkText = remainingText;
+				let originalChunkText = remainingText.substring(0, chunkEndIndex + 1);
+				if (originalChunkText.trim() === "") { // Avoid empty chunks if only whitespace remains
+					if (tempPosition + originalChunkText.length >= fullText.length) break; // End of text
+					tempPosition += originalChunkText.length; // Skip whitespace
+					continue;
 				}
 
-				if (chunkText.trim() !== "") {
-					chunks.push(chunkText.trim());
-					originalChunkObjects.push({
-						text: chunkText, // Preserve original spacing for display
-						originalStart: currentChunkOriginalStart,
-						originalEnd: currentChunkOriginalStart + chunkText.length
-					});
-				}
-				tempPosition += chunkText.length;
-				if (tempPosition >= fullText.length || chunkText.trim() === "") break;
+				const chunkId = `playall-chunk-${chunkIndex}`;
+				chunksToPlay.push({
+					text: originalChunkText.trim(), // For TTS
+					originalChunk: originalChunkText, // For display
+					id: chunkId
+				});
+				highlightedTextHtml += `<span id="${chunkId}">${originalChunkText.replace(/\n/g, '<br>')}</span>`;
+
+				tempPosition += originalChunkText.length;
+				chunkIndex++;
+				if (tempPosition >= fullText.length) break;
 			}
 
-			if (chunks.length === 0) {
+			if (chunksToPlay.length === 0) {
 				showStatus('No speakable chunks found.', 'info');
+				displayText.innerHTML = "No speakable content found in the textarea.";
 				return;
 			}
-
-			// Display full text with spans for highlighting
-			let highlightedTextHtml = "";
-			let charPointer = 0;
-			for(let i=0; i < originalChunkObjects.length; i++) {
-				const obj = originalChunkObjects[i];
-				// Add any text between the last chunk and this one (should be minimal, mostly whitespace)
-				if (obj.originalStart > charPointer) {
-					highlightedTextHtml += fullText.substring(charPointer, obj.originalStart).replace(/\n/g, '<br>');
-				}
-				highlightedTextHtml += `<span id="playall-chunk-${i}">${obj.text.replace(/\n/g, '<br>')}</span>`;
-				charPointer = obj.originalEnd;
-			}
-			// Add any remaining text after the last chunk
-			if (charPointer < fullText.length) {
-				highlightedTextHtml += fullText.substring(charPointer).replace(/\n/g, '<br>');
-			}
-			displayText.innerHTML = highlightedTextHtml;
 
 			isPlaying = true;
 			speakNextBtn.disabled = true;
 			playAllBtn.disabled = true;
 			stopPlaybackBtn.style.display = 'inline-block';
 
-			for (let i = 0; i < chunks.length; i++) {
+			let isFullTextInDOM = false;
+
+			for (let i = 0; i < chunksToPlay.length; i++) {
 				if (signal.aborted) {
 					showStatus('Playback stopped.', 'info');
 					break;
 				}
-
-				const currentChunkText = chunks[i];
-				const chunkSpan = document.getElementById(`playall-chunk-${i}`);
-
-				document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
-				if (chunkSpan) chunkSpan.classList.add('highlight');
+				const currentChunkData = chunksToPlay[i];
 
 				try {
 					await new Promise((resolve, reject) => {
@@ -698,12 +732,27 @@
 							reject(new DOMException('Aborted', 'AbortError'));
 							return;
 						}
-						getAndPlayAudio(currentChunkText, (err) => {
-							if (err) reject(err);
-							else resolve();
-						});
+						getAndPlayAudio(currentChunkData.text, // TTS uses trimmed text
+							(err) => { // onEnded
+								const playedChunkSpan = document.getElementById(currentChunkData.id);
+								if (playedChunkSpan) playedChunkSpan.classList.remove('highlight');
+								if (err) reject(err); else resolve();
+							},
+							() => { // onPlayStart
+								if (!isFullTextInDOM) {
+									displayText.innerHTML = highlightedTextHtml;
+									isFullTextInDOM = true;
+								}
+								document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
+								const currentChunkSpanInDOM = document.getElementById(currentChunkData.id);
+								if (currentChunkSpanInDOM) {
+									currentChunkSpanInDOM.classList.add('highlight');
+									currentChunkSpanInDOM.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+								}
+							}
+						);
 						signal.addEventListener('abort', () => {
-							audioPlayer.pause(); // Stop audio if abort is signalled mid-play
+							audioPlayer.pause();
 							reject(new DOMException('Aborted', 'AbortError'));
 						});
 					});
@@ -714,24 +763,25 @@
 						showStatus(`Error playing chunk ${i + 1}: ${error.message}`, 'danger');
 						console.error(`Error playing chunk ${i + 1}:`, error);
 					}
-					break; // Stop on error or abort
+					break;
 				}
-				if (chunkSpan) chunkSpan.classList.remove('highlight'); // Remove highlight after playing
 			}
 
 			isPlaying = false;
 			speakNextBtn.disabled = false;
 			playAllBtn.disabled = false;
 			stopPlaybackBtn.style.display = 'none';
-			if (!signal.aborted) {
+			if (!signal.aborted && chunksToPlay.length > 0) {
 				showStatus('Finished playing all chunks.', 'success');
 				displayText.innerHTML = "Playback complete. Load new text or play again.";
+			} else if (chunksToPlay.length === 0 && !signal.aborted) {
+				displayText.innerHTML = "No content to play.";
 			}
 			playAllAbortController = null;
+			newTextLoadedForSinglePlay = true; // Reset for single play mode
 		};
 
 		playAllBtn.addEventListener('click', playAllChunks);
-
 	});
 </script>
 </body>
