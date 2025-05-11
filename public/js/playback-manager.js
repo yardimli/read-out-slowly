@@ -530,6 +530,13 @@ class PlaybackManager {
 							if (currentChunkSpanInDOM) {
 								currentChunkSpanInDOM.classList.add('highlight');
 								currentChunkSpanInDOM.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+								
+								setTimeout(() => {
+									window.scrollBy({
+										top: 100,
+										behavior: 'smooth'
+									});
+								}, 100);
 							}
 						},
 						signal // Pass signal to getAndPlayAudio
