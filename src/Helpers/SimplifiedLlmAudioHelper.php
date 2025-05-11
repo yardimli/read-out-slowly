@@ -426,7 +426,7 @@
 				return [
 					'success' => true,
 					'storage_path' => $relativeAmplifiedStoragePath,
-					'fileUrl' => rtrim(self::$appUrl, '/') . '/' . ltrim(self::$publicStorageBasePath, '/') . '/' . $relativeAmplifiedStoragePath,
+					'fileUrl' => rtrim(self::$appUrl, '/') . '/' . $relativeAmplifiedStoragePath,
 					'message' => 'OpenAI TTS generated and amplified successfully.',
 				];
 
