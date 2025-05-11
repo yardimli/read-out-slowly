@@ -75,31 +75,9 @@
 		}
 
 
-		public static function getEnvVar(string $key, $default = null)
-		{
-			// 1. Check $_ENV (primary target for phpdotenv)
-			if (isset($_ENV[$key])) {
-				return $_ENV[$key];
-			}
-
-			// 2. Check $_SERVER (phpdotenv also puts them here)
-			if (isset($_SERVER[$key])) {
-				return $_SERVER[$key];
-			}
-
-			// 3. Fallback to getenv() (for variables set by other means, e.g. system-wide)
-			$value = getenv($key);
-			if ($value !== false) {
-				return $value;
-			}
-
-			// 4. Return default if not found anywhere
-			return $default;
-		}
-
 		private static function getOpenRouterKey_internal(): ?string
 		{
-			return self::getEnvVar('OPEN_ROUTER_API_KEY');
+			return $_ENV['OPEN_ROUTER_API_KEY'];
 		}
 
 		public static function sendTextToLlm(
@@ -110,11 +88,11 @@
 		): array {
 			set_time_limit(300);
 
-			$llm_base_url = self::getEnvVar('OPEN_ROUTER_BASE', 'https://openrouter.ai/api/v1/chat/completions');
+			$llm_base_url = $_ENV['OPEN_ROUTER_BASE'] ?? 'https://openrouter.ai/api/v1/chat/completions';
 			$llm_api_key = self::getOpenRouterKey_internal();
 
 			if (empty($llm_model)) {
-				$llm_model = self::getEnvVar('DEFAULT_LLM_FOR_SIMPLE_HELPER', 'mistralai/mistral-7b-instruct');
+				$llm_model = $_ENV['DEFAULT_LLM_FOR_SIMPLE_HELPER'] ?? 'mistralai/mistral-7b-instruct';
 			}
 
 			if (empty($llm_api_key)) {
@@ -128,8 +106,8 @@
 			}
 			$messages[] = ['role' => 'user', 'content' => $user_prompt];
 
-			$temperature = (float) self::getEnvVar('LLM_HELPER_TEMPERATURE', 0.7);
-			$max_tokens = (int) self::getEnvVar('LLM_HELPER_MAX_TOKENS', 4096);
+			$temperature = (float) $_ENV['LLM_HELPER_TEMPERATURE'] ?? 0.7;
+			$max_tokens = (int) $_ENV['LLM_HELPER_MAX_TOKENS'] ?? 4096;
 
 			$data = [
 				'model' => $llm_model,
@@ -158,7 +136,7 @@
 						'Content-Type' => 'application/json',
 						'Authorization' => 'Bearer ' . $llm_api_key,
 						'HTTP-Referer' => self::$appUrl,
-						'X-Title' => self::getEnvVar('APP_NAME', 'Standalone App'),
+						'X-Title' => $_ENV['APP_NAME'] ?? 'Standalone App',
 					];
 
 					$response = $client->post($llm_base_url, [
@@ -330,13 +308,13 @@
 			string  $outputFilenameBase = 'openai_tts_output',
 			float   $volumeLevel = 4.0
 		): array {
-			$apiKey = self::getEnvVar('OPENAI_API_KEY');
+			$apiKey = $_ENV['OPENAI_API_KEY'];
 			if (empty($apiKey)) {
 				self::log('ERROR', 'OpenAI API key is not configured for textToSpeechOpenAI.');
 				return ['success' => false, 'storage_path' => null, 'fileUrl' => null, 'message' => 'OpenAI API key not configured.'];
 			}
 
-			$openAiModel = self::getEnvVar('OPENAI_TTS_MODEL', 'tts-1');
+			$openAiModel = $_ENV['OPENAI_TTS_MODEL'] ?? 'tts-1';
 			$directory = 'tts/openai';
 
 			$uniquePart = substr(md5($text . $voiceName . $openAiModel), 0, 8);
@@ -417,7 +395,7 @@
 					return [
 						'success' => true,
 						'storage_path' => $relativeRawStoragePath,
-						'fileUrl' => rtrim(self::$appUrl, '/') . '/' . (SimplifiedLlmAudioHelper::getEnvVar('PUBLIC_STORAGE_PATH') ?: 'public') . "/" . $relativeRawStoragePath,
+						'fileUrl' => rtrim(self::$appUrl, '/') . '/' . ($_ENV['PUBLIC_STORAGE_PATH'] ?? 'public') . "/" . $relativeRawStoragePath,
 						'message' => 'OpenAI TTS generated, but amplification failed. Raw audio provided.',
 					];
 				}
@@ -426,7 +404,7 @@
 				return [
 					'success' => true,
 					'storage_path' => $relativeAmplifiedStoragePath,
-					'fileUrl' => rtrim(self::$appUrl, '/') . '/' . (SimplifiedLlmAudioHelper::getEnvVar('PUBLIC_STORAGE_PATH') ?: 'public'). "/" . $relativeAmplifiedStoragePath,
+					'fileUrl' => rtrim(self::$appUrl, '/') . '/' . ($_ENV['PUBLIC_STORAGE_PATH'] ?? 'public'). "/" . $relativeAmplifiedStoragePath,
 					'message' => 'OpenAI TTS generated and amplified successfully.',
 				];
 

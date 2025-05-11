@@ -11,12 +11,10 @@
 	// --- Configuration for the Helper ---
 	// These paths are relative to this index.php script
 	$config = [
-		'log_directory' => __DIR__ . '/' . (getenv('LOG_DIRECTORY') ?: 'storage/logs'),
-		// PUBLIC_STORAGE_PATH env var is the *name* of the public folder (e.g., "public")
-		// The helper's 'public_storage_path' config needs the full disk path.
-		'public_storage_path' => __DIR__ . '/' . (getenv('PUBLIC_STORAGE_PATH') ?: 'public'),
-		'app_url' => getenv('APP_URL') ?: 'http://localhost:8000',
-		'ffmpeg_path' => getenv('FFMPEG_PATH') ?: 'ffmpeg'
+		'log_directory' => __DIR__ . '/' . ($_ENV['LOG_DIRECTORY'] ?? 'storage/logs'),
+		'public_storage_path' => __DIR__ . '/' . ($_ENV['PUBLIC_STORAGE_PATH'] ?? 'public'),
+		'app_url' => $_ENV['APP_URL'] ?? 'http://localhost:8000',
+		'ffmpeg_path' => $_ENV['FFMPEG_PATH'] ?? 'ffmpeg'
 	];
 
 	// Initialize the helper (and its logger)
@@ -31,7 +29,7 @@
 			if ($_POST['action'] === 'generate_text_ai') {
 				$prompt = $_POST['prompt'] ?? 'Write a short, interesting paragraph about space exploration.';
 				$system_prompt = "You are a helpful assistant that writes engaging content based on user prompts. Keep responses concise unless asked for more detail.";
-				$llm_model = getenv('DEFAULT_LLM_FOR_SIMPLE_HELPER') ?: 'mistralai/mistral-7b-instruct';
+				$llm_model = $_ENV['DEFAULT_LLM_FOR_SIMPLE_HELPER'] ?? 'mistralai/mistral-7b-instruct';
 
 				$llmResponse = SimplifiedLlmAudioHelper::sendTextToLlm($llm_model, $system_prompt, $prompt, 1);
 				if ($llmResponse['success']) {

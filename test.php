@@ -25,7 +25,7 @@
 
 // --- Example 1: Send text to LLM ---
 	echo "--- Testing LLM Call ---\n";
-	$llmModel = getenv('DEFAULT_LLM_FOR_SIMPLE_HELPER') ?: 'mistralai/mistral-7b-instruct';
+	$llmModel = $_ENV['DEFAULT_LLM_FOR_SIMPLE_HELPER'] ?? 'mistralai/mistral-7b-instruct';
 	$systemPrompt = "You are a helpful assistant.";
 	$userPrompt = "What is the capital of France?";
 
