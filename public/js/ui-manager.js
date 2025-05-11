@@ -3,7 +3,6 @@ class UIManager {
 		this.elements = elements;
 		this.playbackManager = null; // To be set by setPlaybackManager
 		this.statusVerbosity = 'errors'; // Default
-		
 		this.controlElementsToToggle = [
 			this.elements.settingsCard,
 			this.elements.mainControlsContainer,
@@ -29,6 +28,12 @@ class UIManager {
 		this._bindHideShowControlsListeners();
 		this._bindMainTextareaListener();
 		this._bindChunkUnitListener();
+		
+		// Set initial state for body padding if playback controls are visible
+		if (this.elements.playbackControlsContainer &&
+			!this.elements.playbackControlsContainer.classList.contains('d-none')) {
+			document.body.classList.add('playback-controls-active');
+		}
 	}
 	
 	showStatus(message, type = 'info', duration = 3000) {
@@ -36,8 +41,9 @@ class UIManager {
 		if (this.statusVerbosity === 'errors' && type !== 'danger' && type !== 'warning') return;
 		
 		this.elements.statusMessage.textContent = message;
-		this.elements.statusMessage.className = `alert alert-${type} mt-2`;
+		this.elements.statusMessage.className = `alert alert-${type} mt-2`; // Keep mt-2 for spacing if needed
 		this.elements.statusMessage.style.display = 'block';
+		
 		if (duration) {
 			setTimeout(() => {
 				if (this.elements.statusMessage) { // Check if element still exists
@@ -76,6 +82,7 @@ class UIManager {
 				const formData = new FormData();
 				formData.append('action', 'generate_text_ai');
 				formData.append('prompt', prompt);
+				
 				const response = await fetch(window.location.href, { method: 'POST', body: formData });
 				const result = await response.json();
 				
@@ -122,7 +129,6 @@ class UIManager {
 			return;
 		}
 		texts.sort((a, b) => b.id - a.id); // Show newest first
-		
 		texts.forEach(item => {
 			const li = document.createElement('li');
 			li.className = 'list-group-item';
@@ -162,6 +168,7 @@ class UIManager {
 			
 			btnGroup.appendChild(loadBtn);
 			btnGroup.appendChild(deleteBtn);
+			
 			li.appendChild(textPreview);
 			li.appendChild(btnGroup);
 			this.elements.savedTextsList.appendChild(li);
@@ -198,27 +205,26 @@ class UIManager {
 				}
 			}
 		});
-		// Also toggle playback controls container
+		
+		// Also toggle playback controls container and body class for padding
 		if (this.elements.playbackControlsContainer) {
 			if (show) {
 				this.elements.playbackControlsContainer.classList.remove('d-none');
+				document.body.classList.add('playback-controls-active');
 			} else {
 				this.elements.playbackControlsContainer.classList.add('d-none');
+				document.body.classList.remove('playback-controls-active');
 			}
 		}
 		
-		
-		if (show) {
-			this.elements.toggleControlsBtn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Controls';
-			this.elements.toggleControlsBtn.classList.remove('d-none'); // Ensure button itself is visible
-		} else {
-			// Button is part of mainControlsContainer which gets hidden,
-			// but if it were separate, you might hide it or change text.
-			// For now, it will be hidden with its container.
-			// If we want the "Hide Controls" button to remain visible to allow showing them again,
-			// it should not be part of controlElementsToToggle.
-			// Let's assume for now it's okay for it to be hidden.
-			// The H1 dblclick is the way to show them again.
+		if (this.elements.toggleControlsBtn) {
+			if (show) {
+				this.elements.toggleControlsBtn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Controls';
+			} else {
+				// The button is part of mainControlsContainer which gets hidden.
+				// If it were always visible, you might change text:
+				// this.elements.toggleControlsBtn.innerHTML = '<i class="fas fa-eye"></i> Show Controls';
+			}
 		}
 	}
 	
@@ -235,7 +241,7 @@ class UIManager {
 	_bindMainTextareaListener() {
 		this.elements.mainTextarea.addEventListener('input', () => {
 			if (this.playbackManager) {
-				this.playbackManager.handleTextChange(true); // true indicates text changed by user
+				this.playbackManager.handleTextChange(false); // false indicates text changed by user typing
 			}
 			// The message "Text changed..." is now set by playbackManager.handleTextChange
 		});
