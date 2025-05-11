@@ -39,8 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
 		settingsCard,
 		mainControlsContainer,
 		mainTextarea,
-		mainTextareaLabel,
-		playbackControlsContainer
+		mainTextareaLabel
 	];
 	
 	// New elements for chunking unit
