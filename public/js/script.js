@@ -12,6 +12,8 @@ document.addEventListener('DOMContentLoaded', () => {
 		voiceSelect: document.getElementById('voiceSelect'),
 		volumeInput: document.getElementById('volumeInput'),
 		displayText: document.getElementById('displayText'),
+		displayTextCard: document.getElementById('displayTextCard'), // Added
+		displayTextFontSizeInput: document.getElementById('displayTextFontSizeInput'), // Added
 		speakNextBtn: document.getElementById('speakNextBtn'),
 		playAllBtn: document.getElementById('playAllBtn'),
 		stopPlaybackBtn: document.getElementById('stopPlaybackBtn'),
@@ -39,7 +41,6 @@ document.addEventListener('DOMContentLoaded', () => {
 	// Instantiate managers
 	// UIManager needs to call methods on PlaybackManager
 	// PlaybackManager needs to call showStatus from UIManager
-	
 	const uiManagerInstance = new UIManager(DOMElements);
 	// Pass the showStatus method bound to the uiManagerInstance
 	const playbackManagerInstance = new PlaybackManager(DOMElements, uiManagerInstance.showStatus.bind(uiManagerInstance));

@@ -44,7 +44,6 @@ body.playback-controls-active > .container {
     padding-bottom: 80px;
 }
 
-
 /* Styles for hold-to-activate spinner */
 #holdSpinnerOverlay {
     position: fixed;
@@ -73,13 +72,35 @@ body.playback-controls-active > .container {
     text-shadow: 1px 1px 2px black;
 }
 
+/* Styles for the card containing displayText */
+#displayTextCard {
+    background-color: #f1f3f5; /* A slightly off-white for light mode */
+    /* border is handled by Bootstrap's .card class */
+}
+
+#displayText {
+    white-space: pre-wrap; /* Preserve line breaks and spaces */
+    min-height: 100px;     /* Minimum height */
+    max-height: 250px;    /* Maximum height before scrolling */
+    overflow-y: auto;      /* Add scrollbar if content exceeds max-height */
+    /* font-size will be set by JS. Default browser font-size will apply initially. */
+    /* Text color will be default or from dark mode theme */
+    /* card-body provides padding */
+}
+
 
 /* Dark Mode Styles */
 /* Bootstrap 5.3 uses data-bs-theme="dark" on the <html> element */
+
+[data-bs-theme="dark"] #displayTextCard {
+    background-color: #272b30; /* A slightly different dark shade */
+    /* border-color for .card in dark mode is usually handled by Bootstrap vars or specific overrides */
+}
+
 [data-bs-theme="dark"] #displayText {
-    background-color: #2c3034;
-    border-color: #495057;
-    color: #f8f9fa;
+    /* background-color: #2c3034; -- REMOVED, card has bg */
+    /* border-color: #495057; -- REMOVED, card has border */
+    color: #f8f9fa; /* Ensure text is light */
 }
 
 [data-bs-theme="dark"] #aiPreviewArea {
@@ -102,6 +123,7 @@ body.playback-controls-active > .container {
 [data-bs-theme="dark"] .modal-body .list-group-item .text-preview {
     color: #adb5bd; /* Slightly dimmer text for preview in dark mode */
 }
+
 [data-bs-theme="dark"] .modal-body .list-group-item:hover .text-preview {
     color: #f8f9fa; /* Brighter on hover */
 }
@@ -118,7 +140,6 @@ body.playback-controls-active > .container {
     border-top-color: #495057; /* Darker border for dark mode */
 }
 
-
 /* Ensure form inputs are styled correctly if Bootstrap defaults are not enough */
 [data-bs-theme="dark"] .form-control::placeholder {
     color: #6c757d; /* Lighter placeholder text for dark inputs */
@@ -129,7 +150,6 @@ body.playback-controls-active > .container {
     border-color: #6c757d;
 }
 /* Bootstrap handles :checked state well with primary color */
-
 
 /* General text elements if Bootstrap's defaults need tweaking */
 [data-bs-theme="dark"] h1,

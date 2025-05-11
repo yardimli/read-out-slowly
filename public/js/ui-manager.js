@@ -17,8 +17,7 @@ class UIManager {
 	
 	init() {
 		// Initialize settings UI
-		this.elements.statusVerbositySelect.value = this.statusVerbosity;
-		this.elements.playAllBtn.style.display = this.elements.togglePlayAllBtnSwitch.checked ? 'inline-block' : 'none';
+		this._loadAndApplyInitialSettings(); // Load all settings from localStorage or defaults
 		
 		// Add event listeners
 		this._bindSettingsListeners();
@@ -31,6 +30,48 @@ class UIManager {
 		// Set initial state for body padding if playback controls are visible
 		document.body.classList.add('playback-controls-active');
 	}
+	
+	_loadAndApplyInitialSettings() {
+		// Status Verbosity
+		const savedVerbosity = localStorage.getItem('statusVerbosity');
+		if (savedVerbosity) {
+			this.elements.statusVerbositySelect.value = savedVerbosity;
+			this.statusVerbosity = savedVerbosity;
+		} else {
+			this.statusVerbosity = this.elements.statusVerbositySelect.value; // Default from HTML
+			localStorage.setItem('statusVerbosity', this.statusVerbosity);
+		}
+		
+		// Toggle Play All Button
+		const showPlayAll = localStorage.getItem('showPlayAllButton');
+		if (showPlayAll !== null) {
+			this.elements.togglePlayAllBtnSwitch.checked = (showPlayAll === 'true');
+		}
+		this.elements.playAllBtn.style.display = this.elements.togglePlayAllBtnSwitch.checked ? 'inline-block' : 'none';
+		
+		// Speak Next Hold Duration
+		const savedHoldDuration = localStorage.getItem('speakNextHoldDuration');
+		if (savedHoldDuration) {
+			this.elements.speakNextHoldDurationInput.value = savedHoldDuration;
+		} else {
+			localStorage.setItem('speakNextHoldDuration', this.elements.speakNextHoldDurationInput.value);
+		}
+		
+		// Display Text Font Size
+		const savedFontSize = localStorage.getItem('displayTextFontSize');
+		const fontSizeInput = this.elements.displayTextFontSizeInput;
+		const displayTextElement = this.elements.displayText;
+		
+		if (savedFontSize) {
+			fontSizeInput.value = savedFontSize;
+			displayTextElement.style.fontSize = `${savedFontSize}px`;
+		} else {
+			// Apply default from HTML input's current value and save it
+			displayTextElement.style.fontSize = `${fontSizeInput.value}px`;
+			localStorage.setItem('displayTextFontSize', fontSizeInput.value);
+		}
+	}
+	
 	
 	showStatus(message, type = 'info', duration = 3000) {
 		if (this.statusVerbosity === 'none') return;
@@ -52,14 +93,42 @@ class UIManager {
 	_bindSettingsListeners() {
 		this.elements.statusVerbositySelect.addEventListener('change', (e) => {
 			this.statusVerbosity = e.target.value;
+			localStorage.setItem('statusVerbosity', this.statusVerbosity);
 			this.showStatus(`Status messages set to: ${this.statusVerbosity}`, 'info', 1500);
 		});
 		
 		this.elements.togglePlayAllBtnSwitch.addEventListener('change', (e) => {
 			const show = e.target.checked;
 			this.elements.playAllBtn.style.display = show ? 'inline-block' : 'none';
+			localStorage.setItem('showPlayAllButton', show);
 		});
-		// speakNextHoldDurationInput is read directly by playbackManager
+		
+		this.elements.speakNextHoldDurationInput.addEventListener('change', (e) => {
+			localStorage.setItem('speakNextHoldDuration', e.target.value);
+			this.showStatus(`"Speak Next" hold duration set to ${e.target.value}ms.`, 'info', 1500);
+		});
+		
+		this.elements.displayTextFontSizeInput.addEventListener('input', (e) => { // 'input' for more responsive feel
+			const fontSize = e.target.value;
+			if (fontSize >= parseInt(e.target.min) && fontSize <= parseInt(e.target.max)) {
+				this.elements.displayText.style.fontSize = `${fontSize}px`;
+				localStorage.setItem('displayTextFontSize', fontSize);
+				// this.showStatus(`Display font size set to ${fontSize}px.`, 'info', 1000); // Can be a bit noisy
+			}
+		});
+		this.elements.displayTextFontSizeInput.addEventListener('change', (e) => { // Persist on blur/enter too
+			const fontSize = e.target.value;
+			if (fontSize >= parseInt(e.target.min) && fontSize <= parseInt(e.target.max)) {
+				localStorage.setItem('displayTextFontSize', fontSize);
+				this.showStatus(`Display font size set to ${fontSize}px.`, 'info', 1500);
+			} else {
+				// Reset to a valid value if out of bounds, e.g., the previous valid one or default
+				const lastValidSize = localStorage.getItem('displayTextFontSize') || e.target.defaultValue;
+				e.target.value = lastValidSize;
+				this.elements.displayText.style.fontSize = `${lastValidSize}px`;
+				this.showStatus(`Font size out of range. Reset to ${lastValidSize}px.`, 'warning', 2000);
+			}
+		});
 	}
 	
 	_bindAIGenerationListeners() {
@@ -125,6 +194,7 @@ class UIManager {
 			return;
 		}
 		texts.sort((a, b) => b.id - a.id); // Show newest first
+		
 		texts.forEach(item => {
 			const li = document.createElement('li');
 			li.className = 'list-group-item';
@@ -201,7 +271,6 @@ class UIManager {
 				}
 			}
 		});
-		
 		if (this.elements.toggleControlsBtn) {
 			if (show) {
 				this.elements.toggleControlsBtn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Controls';
@@ -217,7 +286,6 @@ class UIManager {
 		this.elements.toggleControlsBtn.addEventListener('click', () => {
 			this._updateControlsVisibility(false); // Hide all controls
 		});
-		
 		this.elements.h1Title.addEventListener('dblclick', () => {
 			this._updateControlsVisibility(true); // Show all controls
 		});

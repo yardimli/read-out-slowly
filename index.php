@@ -67,6 +67,12 @@
 					<input type="number" id="volumeInput" class="form-control" value="4" min="0.1" max="10" step="0.1">
 				</div>
 			</div>
+			<div class="row">
+				<div class="col-md-4 mb-3">
+					<label for="displayTextFontSizeInput" class="form-label">Display Font Size (px):</label>
+					<input type="number" id="displayTextFontSizeInput" class="form-control" value="16" min="8" max="48" step="1">
+				</div>
+			</div>
 		</div>
 	</div>
 
@@ -143,14 +149,22 @@
 			<label class="form-check-label" for="darkModeSwitch" style="cursor: pointer;">Dark Mode</label>
 		</div>
 	</div>
+	<div class="mb-3">
+		<span class="text-muted">After hiding the controls double click the header to show them again.</span>
+	</div>
 
 	<div class="mb-3">
 		<label for="mainTextarea" class="form-label">Enter or generate text below:</label>
 		<textarea id="mainTextarea" class="form-control" rows="10" placeholder="Type or paste your text here..."></textarea>
 	</div>
 
-	<div id="displayText" class="mb-3">
-		Text chunks will appear here...
+	<!-- Display Text Area in a Card -->
+	<div class="card mb-3" id="displayTextCard">
+		<div class="card-body">
+			<div id="displayText">
+				Text chunks will appear here...
+			</div>
+		</div>
 	</div>
 
 	<audio id="audioPlayer" style="display: none;"></audio>
