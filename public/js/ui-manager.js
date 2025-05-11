@@ -8,7 +8,6 @@ class UIManager {
 			this.elements.mainControlsContainer,
 			this.elements.mainTextarea,
 			this.elements.mainTextareaLabel,
-			// playbackControlsContainer is handled separately if needed, or add here
 		];
 	}
 	
@@ -30,10 +29,7 @@ class UIManager {
 		this._bindChunkUnitListener();
 		
 		// Set initial state for body padding if playback controls are visible
-		if (this.elements.playbackControlsContainer &&
-			!this.elements.playbackControlsContainer.classList.contains('d-none')) {
-			document.body.classList.add('playback-controls-active');
-		}
+		document.body.classList.add('playback-controls-active');
 	}
 	
 	showStatus(message, type = 'info', duration = 3000) {
@@ -205,17 +201,6 @@ class UIManager {
 				}
 			}
 		});
-		
-		// Also toggle playback controls container and body class for padding
-		if (this.elements.playbackControlsContainer) {
-			if (show) {
-				this.elements.playbackControlsContainer.classList.remove('d-none');
-				document.body.classList.add('playback-controls-active');
-			} else {
-				this.elements.playbackControlsContainer.classList.add('d-none');
-				document.body.classList.remove('playback-controls-active');
-			}
-		}
 		
 		if (this.elements.toggleControlsBtn) {
 			if (show) {
