@@ -1,0 +1,264 @@
+class UIManager {
+	constructor(elements) {
+		this.elements = elements;
+		this.playbackManager = null; // To be set by setPlaybackManager
+		this.statusVerbosity = 'errors'; // Default
+		
+		this.controlElementsToToggle = [
+			this.elements.settingsCard,
+			this.elements.mainControlsContainer,
+			this.elements.mainTextarea,
+			this.elements.mainTextareaLabel,
+			// playbackControlsContainer is handled separately if needed, or add here
+		];
+	}
+	
+	setPlaybackManager(playbackManager) {
+		this.playbackManager = playbackManager;
+	}
+	
+	init() {
+		// Initialize settings UI
+		this.elements.statusVerbositySelect.value = this.statusVerbosity;
+		this.elements.playAllBtn.style.display = this.elements.togglePlayAllBtnSwitch.checked ? 'inline-block' : 'none';
+		
+		// Add event listeners
+		this._bindSettingsListeners();
+		this._bindAIGenerationListeners();
+		this._bindLocalStorageListeners();
+		this._bindHideShowControlsListeners();
+		this._bindMainTextareaListener();
+		this._bindChunkUnitListener();
+	}
+	
+	showStatus(message, type = 'info', duration = 3000) {
+		if (this.statusVerbosity === 'none') return;
+		if (this.statusVerbosity === 'errors' && type !== 'danger' && type !== 'warning') return;
+		
+		this.elements.statusMessage.textContent = message;
+		this.elements.statusMessage.className = `alert alert-${type} mt-2`;
+		this.elements.statusMessage.style.display = 'block';
+		if (duration) {
+			setTimeout(() => {
+				if (this.elements.statusMessage) { // Check if element still exists
+					this.elements.statusMessage.style.display = 'none';
+				}
+			}, duration);
+		}
+	}
+	
+	_bindSettingsListeners() {
+		this.elements.statusVerbositySelect.addEventListener('change', (e) => {
+			this.statusVerbosity = e.target.value;
+			this.showStatus(`Status messages set to: ${this.statusVerbosity}`, 'info', 1500);
+		});
+		
+		this.elements.togglePlayAllBtnSwitch.addEventListener('change', (e) => {
+			const show = e.target.checked;
+			this.elements.playAllBtn.style.display = show ? 'inline-block' : 'none';
+		});
+		// speakNextHoldDurationInput is read directly by playbackManager
+	}
+	
+	_bindAIGenerationListeners() {
+		this.elements.generateAiTextBtn.addEventListener('click', async () => {
+			const prompt = this.elements.aiPromptInput.value.trim();
+			if (!prompt) {
+				this.showStatus('Please enter a prompt for the AI.', 'warning');
+				return;
+			}
+			this.elements.generateAiTextBtn.disabled = true;
+			this.elements.generateAiTextBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+			this.elements.aiPreviewArea.innerHTML = 'Generating... <i class="fas fa-spinner fa-spin"></i>';
+			this.elements.useAiTextBtn.disabled = true;
+			
+			try {
+				const formData = new FormData();
+				formData.append('action', 'generate_text_ai');
+				formData.append('prompt', prompt);
+				const response = await fetch(window.location.href, { method: 'POST', body: formData });
+				const result = await response.json();
+				
+				if (result.success && result.text) {
+					this.elements.aiPreviewArea.innerHTML = result.text.replace(/\n/g, '<br>');
+					this.elements.useAiTextBtn.disabled = false;
+				} else {
+					this.elements.aiPreviewArea.textContent = 'Error: ' + (result.message || 'Could not generate text.');
+					this.showStatus('AI generation failed: ' + (result.message || 'Unknown error'), 'danger');
+				}
+			} catch (error) {
+				this.elements.aiPreviewArea.textContent = 'Error: ' + error.message;
+				this.showStatus('AI generation error: ' + error.message, 'danger');
+			} finally {
+				this.elements.generateAiTextBtn.disabled = false;
+				this.elements.generateAiTextBtn.innerHTML = '<i class="fas fa-cogs"></i> Generate';
+			}
+		});
+		
+		this.elements.useAiTextBtn.addEventListener('click', () => {
+			const textToUse = this.elements.aiPreviewArea.innerHTML.replace(/<br\s*\/?>/gi, '\n');
+			this.elements.mainTextarea.value = textToUse;
+			if (this.playbackManager) {
+				this.playbackManager.handleTextChange(true); // true indicates new text loaded
+			}
+			bootstrap.Modal.getInstance(this.elements.aiGenerateModal).hide();
+			this.showStatus('Text loaded into textarea.', 'success');
+		});
+	}
+	
+	_getSavedTexts() {
+		return JSON.parse(localStorage.getItem('readOutSlowlyTexts')) || [];
+	}
+	
+	_saveTexts(texts) {
+		localStorage.setItem('readOutSlowlyTexts', JSON.stringify(texts));
+	}
+	
+	_populateLoadModal() {
+		const texts = this._getSavedTexts();
+		this.elements.savedTextsList.innerHTML = '';
+		if (texts.length === 0) {
+			this.elements.savedTextsList.innerHTML = '<li class="list-group-item">No texts saved yet.</li>';
+			return;
+		}
+		texts.sort((a, b) => b.id - a.id); // Show newest first
+		
+		texts.forEach(item => {
+			const li = document.createElement('li');
+			li.className = 'list-group-item';
+			
+			const textPreview = document.createElement('span');
+			textPreview.className = 'text-preview';
+			textPreview.textContent = `${item.name}`;
+			textPreview.title = `Preview: ${item.text.substring(0, 200).replace(/\n/g, ' ')}...`;
+			
+			const btnGroup = document.createElement('div');
+			btnGroup.className = 'btn-group';
+			
+			const loadBtn = document.createElement('button');
+			loadBtn.className = 'btn btn-sm btn-outline-primary';
+			loadBtn.innerHTML = '<i class="fas fa-download"></i> Load';
+			loadBtn.onclick = () => {
+				this.elements.mainTextarea.value = item.text;
+				if (this.playbackManager) {
+					this.playbackManager.handleTextChange(true);
+				}
+				this.elements.displayText.innerHTML = `Text "${item.name}" loaded. Click 'Speak Next Chunk' or 'Play All'.`;
+				bootstrap.Modal.getInstance(this.elements.localStorageLoadModal).hide();
+				this.showStatus(`Text "${item.name}" loaded.`, 'success');
+			};
+			
+			const deleteBtn = document.createElement('button');
+			deleteBtn.className = 'btn btn-sm btn-outline-danger ms-2';
+			deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Delete';
+			deleteBtn.onclick = () => {
+				if (confirm(`Are you sure you want to delete "${item.name}"?`)) {
+					const updatedTexts = texts.filter(t => t.id !== item.id);
+					this._saveTexts(updatedTexts);
+					this._populateLoadModal(); // Refresh list
+					this.showStatus(`Text "${item.name}" deleted.`, 'info');
+				}
+			};
+			
+			btnGroup.appendChild(loadBtn);
+			btnGroup.appendChild(deleteBtn);
+			li.appendChild(textPreview);
+			li.appendChild(btnGroup);
+			this.elements.savedTextsList.appendChild(li);
+		});
+	}
+	
+	_bindLocalStorageListeners() {
+		this.elements.saveToStorageBtn.addEventListener('click', () => {
+			const text = this.elements.mainTextarea.value.trim();
+			if (!text) {
+				this.showStatus('Textarea is empty. Nothing to save.', 'warning');
+				return;
+			}
+			const texts = this._getSavedTexts();
+			const defaultName = text.substring(0, 30).replace(/\n/g, ' ') + (text.length > 30 ? "..." : "");
+			const name = prompt("Enter a name for this text:", defaultName);
+			if (name === null) return; // User cancelled
+			
+			texts.push({ id: Date.now().toString(), name: name || defaultName, text: text });
+			this._saveTexts(texts);
+			this.showStatus('Text saved to LocalStorage!', 'success');
+		});
+		
+		this.elements.localStorageLoadModal.addEventListener('show.bs.modal', () => this._populateLoadModal());
+	}
+	
+	_updateControlsVisibility(show) {
+		this.controlElementsToToggle.forEach(el => {
+			if (el) {
+				if (show) {
+					el.classList.remove('d-none');
+				} else {
+					el.classList.add('d-none');
+				}
+			}
+		});
+		// Also toggle playback controls container
+		if (this.elements.playbackControlsContainer) {
+			if (show) {
+				this.elements.playbackControlsContainer.classList.remove('d-none');
+			} else {
+				this.elements.playbackControlsContainer.classList.add('d-none');
+			}
+		}
+		
+		
+		if (show) {
+			this.elements.toggleControlsBtn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Controls';
+			this.elements.toggleControlsBtn.classList.remove('d-none'); // Ensure button itself is visible
+		} else {
+			// Button is part of mainControlsContainer which gets hidden,
+			// but if it were separate, you might hide it or change text.
+			// For now, it will be hidden with its container.
+			// If we want the "Hide Controls" button to remain visible to allow showing them again,
+			// it should not be part of controlElementsToToggle.
+			// Let's assume for now it's okay for it to be hidden.
+			// The H1 dblclick is the way to show them again.
+		}
+	}
+	
+	_bindHideShowControlsListeners() {
+		this.elements.toggleControlsBtn.addEventListener('click', () => {
+			this._updateControlsVisibility(false); // Hide all controls
+		});
+		
+		this.elements.h1Title.addEventListener('dblclick', () => {
+			this._updateControlsVisibility(true); // Show all controls
+		});
+	}
+	
+	_bindMainTextareaListener() {
+		this.elements.mainTextarea.addEventListener('input', () => {
+			if (this.playbackManager) {
+				this.playbackManager.handleTextChange(true); // true indicates text changed by user
+			}
+			// The message "Text changed..." is now set by playbackManager.handleTextChange
+		});
+	}
+	
+	_bindChunkUnitListener() {
+		this.elements.chunkUnitSelect.addEventListener('change', (e) => {
+			const unit = e.target.value;
+			if (unit === 'sentences') {
+				this.elements.wordsPerChunkLabel.textContent = 'Sentences per chunk (approx):';
+				if (parseInt(this.elements.wordsPerChunkInput.value) > 5 || parseInt(this.elements.wordsPerChunkInput.value) < 1) {
+					this.elements.wordsPerChunkInput.value = '1'; // Default for sentences
+				}
+			} else { // words
+				this.elements.wordsPerChunkLabel.textContent = 'Words per chunk (approx):';
+				if (parseInt(this.elements.wordsPerChunkInput.value) < 3 || parseInt(this.elements.wordsPerChunkInput.value) > 100) { // Example range
+					this.elements.wordsPerChunkInput.value = '10'; // Default for words
+				}
+			}
+			if (this.playbackManager) {
+				this.playbackManager.handleChunkSettingsChange();
+			}
+			this.elements.displayText.innerHTML = "Chunking unit changed. Click 'Speak Next Chunk' or 'Play All'.";
+		});
+	}
+}

@@ -1,93 +1,6 @@
-<?php
-	require __DIR__ . '/vendor/autoload.php';
-	use App\Helpers\SimplifiedLlmAudioHelper;
-	use Dotenv\Dotenv;
-
-	// Load environment variables from .env file
-	$dotenv = Dotenv::createImmutable(__DIR__);
-	$dotenv->load();
-
-	// --- Configuration for the Helper ---
-	// These paths are relative to this index.php script
-	$config = [
-		'log_directory' => __DIR__ . '/' . ($_ENV['LOG_DIRECTORY'] ?? 'storage/logs'),
-		'public_storage_path' => __DIR__ . '/' . ($_ENV['PUBLIC_STORAGE_PATH_BASEDIR'] ?? 'public'), // Base directory for storage
-		'app_url' => $_ENV['APP_URL'] ?? 'http://localhost:8000',
-		'ffmpeg_path' => $_ENV['FFMPEG_PATH'] ?? 'ffmpeg'
-	];
-
-	// Initialize the helper (and its logger)
-	SimplifiedLlmAudioHelper::init($config);
-
-	// --- Handle AJAX Requests ---
-	if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-		header('Content-Type: application/json');
-		$response = ['success' => false, 'message' => 'Invalid action'];
-
-		try {
-			if ($_POST['action'] === 'generate_text_ai') {
-				$prompt = $_POST['prompt'] ?? 'Write a short, interesting paragraph about space exploration.';
-				$system_prompt = "You are a helpful assistant that writes engaging content based on user prompts. Keep responses concise unless asked for more detail.";
-				$llm_model = $_ENV['DEFAULT_LLM_FOR_SIMPLE_HELPER'] ?? 'mistralai/mistral-7b-instruct';
-				$llmResponse = SimplifiedLlmAudioHelper::sendTextToLlm($llm_model, $system_prompt, $prompt, 1);
-
-				if ($llmResponse['success']) {
-					$response = ['success' => true, 'text' => $llmResponse['content']];
-				} else {
-					$response = ['success' => false, 'message' => 'AI generation failed: ' . ($llmResponse['error'] ?? 'Unknown error')];
-				}
-			} elseif ($_POST['action'] === 'text_to_speech_chunk') {
-				$textChunk = $_POST['text_chunk'] ?? '';
-				if (empty(trim($textChunk))) {
-					echo json_encode(['success' => false, 'message' => 'Text chunk cannot be empty.']);
-					exit;
-				}
-				$voice = $_POST['voice'] ?? 'nova';
-				$volume = (float)($_POST['volume'] ?? 4.0);
-
-				// Generate a filename base from voice and sanitized text
-				$sanitizedText = strtolower($textChunk);
-				$sanitizedText = preg_replace('/[^\w\s-]/', '', $sanitizedText); // Allow words, spaces, hyphens
-				$sanitizedText = preg_replace('/\s+/', '-', $sanitizedText); // Replace spaces with hyphens
-				$sanitizedText = preg_replace('/-+/', '-', $sanitizedText);  // Collapse multiple hyphens
-				$sanitizedText = trim($sanitizedText, '-');
-				if (strlen($sanitizedText) > 50) { // Max length for text part of filename
-					$sanitizedText = substr($sanitizedText, 0, 50);
-					$sanitizedText = trim($sanitizedText, '-'); // Trim again if cut left a hyphen
-				}
-				if (empty($sanitizedText)) { // Handle cases where text becomes empty after sanitization
-					$sanitizedText = 'tts-' . substr(md5($textChunk), 0, 8);
-				}
-				$filenameBase = $voice . '-' . $sanitizedText;
-
-				$ttsResponse = SimplifiedLlmAudioHelper::textToSpeechOpenAI($textChunk, $voice, $filenameBase, $volume);
-
-				if ($ttsResponse['success']) {
-					$response = [
-						'success' => true,
-						'fileUrl' => $ttsResponse['fileUrl'],
-						'message' => $ttsResponse['message']
-					];
-				} else {
-					$response = ['success' => false, 'message' => 'TTS generation failed: ' . ($ttsResponse['message'] ?? 'Unknown error')];
-				}
-			}
-		} catch (Exception $e) {
-			// Use the static log method from the helper if available, or error_log
-			if (class_exists('App\Helpers\SimplifiedLlmAudioHelper') && method_exists('App\Helpers\SimplifiedLlmAudioHelper', 'log')) {
-				SimplifiedLlmAudioHelper::log('ERROR', 'AJAX Action Exception: ' . $e->getMessage() . ' Trace: ' . $e->getTraceAsString());
-			} else {
-				error_log('AJAX Action Exception: ' . $e->getMessage());
-			}
-			$response = ['success' => false, 'message' => 'Server error: ' . $e->getMessage()];
-		}
-
-		echo json_encode($response);
-		exit;
-	}
-?>
+<?php include_once 'header.php'; ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"> <!-- data-bs-theme will be set here by JS -->
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -208,22 +121,27 @@
 		</div>
 	</div>
 
-	<div class="my-3" id="mainControlsContainer">
-		<button class="btn btn-info" data-bs-toggle="modal" data-bs-target="#aiGenerateModal">
+	<div class="my-3 d-flex flex-wrap align-items-center" id="mainControlsContainer">
+		<button class="btn btn-info me-2 mb-2" data-bs-toggle="modal" data-bs-target="#aiGenerateModal">
 			<i class="fas fa-robot"></i> Generate with AI
 		</button>
-		<button id="saveToStorageBtn" class="btn btn-success">
+		<button id="saveToStorageBtn" class="btn btn-success me-2 mb-2">
 			<i class="fas fa-save"></i> Save to LocalStorage
 		</button>
-		<button id="loadFromStorageBtn" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#localStorageLoadModal">
+		<button id="loadFromStorageBtn" class="btn btn-warning me-2 mb-2" data-bs-toggle="modal" data-bs-target="#localStorageLoadModal">
 			<i class="fas fa-upload"></i> Load from LocalStorage
 		</button>
-		<button id="pregenerateAllBtn" class="btn btn-secondary">
+		<button id="pregenerateAllBtn" class="btn btn-secondary me-2 mb-2">
 			<i class="fas fa-cogs"></i> Pregenerate All Audio
 		</button>
-		<button id="toggleControlsBtn" class="btn btn-outline-secondary ms-2">
+		<button id="toggleControlsBtn" class="btn btn-outline-secondary me-2 mb-2">
 			<i class="fas fa-eye-slash"></i> Hide Controls
 		</button>
+		<!-- Dark Mode Switch -->
+		<div class="form-check form-switch ms-auto mb-2"> <!-- ms-auto pushes it to the right, mb-2 for alignment with other buttons if they wrap -->
+			<input class="form-check-input" type="checkbox" role="switch" id="darkModeSwitch" style="cursor: pointer; transform: scale(1.2);">
+			<label class="form-check-label" for="darkModeSwitch" style="cursor: pointer;">Dark Mode</label>
+		</div>
 	</div>
 
 	<div class="mb-3">
@@ -235,7 +153,11 @@
 		Text chunks will appear here...
 	</div>
 
-	<div class="mb-3" id="playbackControlsContainer">
+	<audio id="audioPlayer" style="display: none;"></audio>
+	<div id="statusMessage" class="alert alert-info" style="display:none;"></div>
+
+	<!-- Playback Controls Container - Will be fixed to bottom -->
+	<div id="playbackControlsContainer">
 		<button id="speakNextBtn" class="btn btn-primary me-2">
 			<i class="fas fa-play-circle"></i> Speak Next Chunk
 		</button>
@@ -247,9 +169,6 @@
 		</button>
 	</div>
 
-	<audio id="audioPlayer" style="display: none;"></audio>
-	<div id="statusMessage" class="alert alert-info" style="display:none;"></div>
-
 	<!-- Hold Spinner Overlay -->
 	<div id="holdSpinnerOverlay" style="display: none;">
 		<div id="holdSpinner">
@@ -259,6 +178,9 @@
 </div>
 
 <script src="public/vendor/bootstrap5.3.5/js/bootstrap.bundle.min.js"></script>
+<script src="public/js/ui-manager.js"></script>
+<script src="public/js/playback-manager.js"></script>
 <script src="public/js/script.js"></script>
+<script src="public/js/dark-mode.js"></script>
 </body>
 </html>

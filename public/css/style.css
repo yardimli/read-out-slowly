@@ -1,20 +1,4 @@
-body {
-    padding-bottom: 100px;
-}
-
-#displayText {
-    font-size: 1.5em;
-    padding: 15px;
-    border: 1px solid #eee;
-    border-radius: 5px;
-    min-height: 100px;
-    background-color: #f9f9f9;
-    white-space: pre-wrap; /* Handles newlines correctly */
-}
-
-.highlight {
-    background-color: yellow;
-}
+/* ... existing styles ... */
 
 /* Styles that were previously incorrectly nested */
 .modal-body .list-group-item {
@@ -66,4 +50,72 @@ body {
     font-size: 1.5em;
     color: white;
     text-shadow: 1px 1px 2px black;
+}
+
+
+/* Dark Mode Styles */
+/* Bootstrap 5.3 uses data-bs-theme="dark" on the <html> element */
+
+[data-bs-theme="dark"] #displayText {
+    background-color: #2c3034;
+    border-color: #495057;
+    color: #f8f9fa;
+}
+
+[data-bs-theme="dark"] #aiPreviewArea {
+    background-color: #2c3034; /* Consistent with displayText */
+    border-color: #495057;
+    color: #f8f9fa;
+}
+
+[data-bs-theme="dark"] .highlight {
+    background-color: #b38600; /* Darker yellow/gold */
+    color: #ffffff; /* White text on dark yellow */
+}
+
+[data-bs-theme="dark"] .modal-body .list-group-item {
+    background-color: #343a40;
+    border-color: #495057;
+    /* color will be inherited or set by Bootstrap's dark theme for modal content */
+}
+
+[data-bs-theme="dark"] .modal-body .list-group-item .text-preview {
+    color: #adb5bd; /* Slightly dimmer text for preview in dark mode */
+}
+[data-bs-theme="dark"] .modal-body .list-group-item:hover .text-preview {
+    color: #f8f9fa; /* Brighter on hover */
+}
+
+
+[data-bs-theme="dark"] #holdSpinner {
+    background: conic-gradient(dodgerblue 0deg, #6c757d 0deg); /* Use a lighter gray for the 'off' part */
+    /* color: white; remains white */
+    /* text-shadow: 1px 1px 2px #000; shadow might be less prominent but okay */
+}
+
+/* Ensure form inputs are styled correctly if Bootstrap defaults are not enough */
+[data-bs-theme="dark"] .form-control::placeholder {
+    color: #6c757d; /* Lighter placeholder text for dark inputs */
+}
+
+[data-bs-theme="dark"] .form-check-input:not(:checked) {
+    background-color: #495057;
+    border-color: #6c757d;
+}
+/* Bootstrap handles :checked state well with primary color */
+
+/* General text elements if Bootstrap's defaults need tweaking */
+[data-bs-theme="dark"] h1,
+[data-bs-theme="dark"] h5.modal-title, /* Ensure modal titles are light */
+[data-bs-theme="dark"] label,
+[data-bs-theme="dark"] .form-check-label {
+    /* color: #f8f9fa; Bootstrap should handle this, but can be explicit if needed */
+}
+
+/* Ensure status message text is readable */
+[data-bs-theme="dark"] .alert {
+    /* Bootstrap 5.3 handles alert variants in dark mode automatically by changing CSS variables.
+       For example, .alert-info will have a dark background and light text.
+       No specific overrides should be needed here unless you want to customize Bootstrap's dark alerts.
+    */
 }
