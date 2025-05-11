@@ -44,7 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	
 	const showStatus = (message, type = 'info', duration = 3000) => {
 		if (statusVerbosity === 'none') return;
-		if (statusVerbosity === 'errors' && type !== 'danger' && type !== 'warning') return;
+		if (statusVerbosity === 'errors' && type !== 'danger') return;
 		
 		statusMessage.textContent = message;
 		statusMessage.className = `alert alert-${type} mt-2`;

@@ -108,8 +108,8 @@
 				<div class="col-md-4 mb-3">
 					<label for="statusVerbositySelect" class="form-label">Status Messages:</label>
 					<select id="statusVerbositySelect" class="form-select">
-						<option value="all" selected>Show All</option>
-						<option value="errors">Errors & Warnings Only</option>
+						<option value="all">Show All</option>
+						<option value="errors" selected>Errors & Warnings Only</option>
 						<option value="none">Show None</option>
 					</select>
 				</div>
