@@ -45,7 +45,7 @@ class SimplifiedLlmAudioHelper { // Added class keyword
 	}
 
 	// Simple internal logging function
-	private static function log(string $level, string $message, $context = null): void {
+	public static function log(string $level, string $message, $context = null): void {
 		if (!self::$loggingEnabled || empty(self::$logFilePath)) {
 			if (strtoupper($level) === 'ERROR' || strtoupper($level) === 'CRITICAL') {
 				error_log("LlmAudioHelper [{$level}]: {$message}" . ($context ? " | Context: " . (is_array($context) || is_object($context) ? json_encode($context) : $context) : ''));
