@@ -1,3 +1,26 @@
+// Define this utility function in the global scope or a namespace
+// before it's potentially called by managers.
+function getRecaptchaToken(action) {
+	return new Promise((resolve, reject) => {
+		if (typeof grecaptcha === 'undefined' || typeof RECAPTCHA_SITE_KEY === 'undefined' || !RECAPTCHA_SITE_KEY) {
+			console.warn('reCAPTCHA not loaded or site key missing.');
+			// Reject to prevent action if reCAPTCHA is critical
+			reject(new Error('reCAPTCHA not available. Please ensure it is loaded and configured.'));
+			return;
+		}
+		grecaptcha.ready(() => {
+			grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: action })
+				.then((token) => {
+					resolve(token);
+				})
+				.catch((error) => {
+					console.error('Error executing reCAPTCHA:', error);
+					reject(new Error('reCAPTCHA execution failed: ' + error.message));
+				});
+		});
+	});
+}
+
 document.addEventListener('DOMContentLoaded', () => {
 	// Select ALL DOM elements here to pass to managers
 	const DOMElements = {
@@ -12,8 +35,8 @@ document.addEventListener('DOMContentLoaded', () => {
 		voiceSelect: document.getElementById('voiceSelect'),
 		volumeInput: document.getElementById('volumeInput'),
 		displayText: document.getElementById('displayText'),
-		displayTextCard: document.getElementById('displayTextCard'), // Added
-		displayTextFontSizeInput: document.getElementById('displayTextFontSizeInput'), // Added
+		displayTextCard: document.getElementById('displayTextCard'),
+		displayTextFontSizeInput: document.getElementById('displayTextFontSizeInput'),
 		speakNextBtn: document.getElementById('speakNextBtn'),
 		playAllBtn: document.getElementById('playAllBtn'),
 		stopPlaybackBtn: document.getElementById('stopPlaybackBtn'),
@@ -34,24 +57,16 @@ document.addEventListener('DOMContentLoaded', () => {
 		chunkUnitSelect: document.getElementById('chunkUnitSelect'),
 		wordsPerChunkLabel: document.querySelector('label[for="wordsPerChunkInput"]'),
 		pregenerateAllBtn: document.getElementById('pregenerateAllBtn'),
-		aiGenerateModal: document.getElementById('aiGenerateModal'), // Modal elements
+		aiGenerateModal: document.getElementById('aiGenerateModal'),
 		localStorageLoadModal: document.getElementById('localStorageLoadModal'),
 	};
 	
 	// Instantiate managers
-	// UIManager needs to call methods on PlaybackManager
-	// PlaybackManager needs to call showStatus from UIManager
 	const uiManagerInstance = new UIManager(DOMElements);
-	// Pass the showStatus method bound to the uiManagerInstance
 	const playbackManagerInstance = new PlaybackManager(DOMElements, uiManagerInstance.showStatus.bind(uiManagerInstance));
-	
-	// Provide the playbackManagerInstance to the uiManagerInstance for cross-communication
 	uiManagerInstance.setPlaybackManager(playbackManagerInstance);
 	
 	// Initialize both managers
 	uiManagerInstance.init();
 	playbackManagerInstance.init();
-	
-	// Any other global initializations that don't fit into managers can go here
-	// For example, if there were truly global event listeners not tied to a specific manager's scope.
 });

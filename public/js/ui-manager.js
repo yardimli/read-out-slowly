@@ -144,9 +144,12 @@ class UIManager {
 			this.elements.useAiTextBtn.disabled = true;
 			
 			try {
+				const recaptchaToken = await getRecaptchaToken('generate_ai_text'); // Specific action name
+				
 				const formData = new FormData();
 				formData.append('action', 'generate_text_ai');
 				formData.append('prompt', prompt);
+				formData.append('g-recaptcha-response', recaptchaToken);
 				
 				const response = await fetch(window.location.href, { method: 'POST', body: formData });
 				const result = await response.json();

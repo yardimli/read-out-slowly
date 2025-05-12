@@ -272,11 +272,14 @@ class PlaybackManager {
 		
 		this.showStatus(`Requesting TTS for: "${trimmedTextChunk.substring(0, 30)}..."`, 'info', null); // Keep null for ongoing
 		try {
+			const recaptchaToken = await getRecaptchaToken('text_to_speech'); // Specific action name
+			
 			const formData = new FormData();
 			formData.append('action', 'text_to_speech_chunk');
 			formData.append('text_chunk', trimmedTextChunk);
 			formData.append('voice', this.elements.voiceSelect.value);
 			formData.append('volume', this.elements.volumeInput.value);
+			formData.append('g-recaptcha-response', recaptchaToken);
 			
 			const fetchOptions = { method: 'POST', body: formData };
 			if (signal) fetchOptions.signal = signal;

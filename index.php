@@ -190,6 +190,14 @@
 </div>
 
 <script src="public/vendor/bootstrap5.3.5/js/bootstrap.bundle.min.js"></script>
+
+<!-- Add reCAPTCHA script here, before your custom scripts -->
+<script src="https://www.google.com/recaptcha/api.js?render=<?php echo htmlspecialchars($_ENV['RECAPTCHA_V3_SITE_KEY'] ?? ''); ?>"></script>
+<script>
+	// Make site key available to other JS files
+	const RECAPTCHA_SITE_KEY = '<?php echo htmlspecialchars($_ENV['RECAPTCHA_V3_SITE_KEY'] ?? ''); ?>';
+</script>
+
 <script src="public/js/ui-manager.js"></script>
 <script src="public/js/playback-manager.js"></script>
 <script src="public/js/script.js"></script>
