@@ -95,9 +95,9 @@ body.playback-controls-active > .container { /* Adjust this value based on the a
 }
 
 [data-bs-theme="dark"] #aiPreviewArea {
-    background-color: #2c3034; /* Consistent with displayText */
-    border-color: #495057;
-    color: #f8f9fa;
+    background-color: #2c3034 !important; /* Consistent with displayText */
+    border-color: #495057 !important;
+    color: #f8f9fa !important; /* Ensure text is light */
 }
 
 [data-bs-theme="dark"] .highlight {
