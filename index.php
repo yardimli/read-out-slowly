@@ -11,7 +11,7 @@
 </head>
 <body>
 <div class="container mt-4">
-	<h1>Read Out Slowly Tool</h1>
+	<h3>Read Out Slowly Tool</h3>
 
 	<!-- Settings Area -->
 	<div class="card mb-3" id="settingsCard">
@@ -40,7 +40,7 @@
 				</div>
 			</div>
 			<div class="row align-items-end mb-3">
-				<div class="col-md-3">
+				<div class="col-md-2">
 					<label for="chunkUnitSelect" class="form-label">Chunk by:</label>
 					<select id="chunkUnitSelect" class="form-select">
 						<option value="words" selected>Words</option>
@@ -51,7 +51,7 @@
 					<label for="wordsPerChunkInput" class="form-label">Words per chunk (approx):</label>
 					<input type="number" id="wordsPerChunkInput" class="form-control" value="10" min="1">
 				</div>
-				<div class="col-md-3">
+				<div class="col-md-2">
 					<label for="voiceSelect" class="form-label">TTS Voice:</label>
 					<select id="voiceSelect" class="form-select">
 						<option value="alloy">Alloy</option>
@@ -63,13 +63,11 @@
 					</select>
 				</div>
 				<div class="col-md-3">
-					<label for="volumeInput" class="form-label">Volume (1-10, FFMPEG):</label>
-					<input type="number" id="volumeInput" class="form-control" value="4" min="0.1" max="10" step="0.1">
+					<label for="volumeInput" class="form-label">Volume Boost (1-10):</label>
+					<input type="number" id="volumeInput" class="form-control" value="6" min="0.1" max="10" step="0.5">
 				</div>
-			</div>
-			<div class="row">
-				<div class="col-md-4 mb-3">
-					<label for="displayTextFontSizeInput" class="form-label">Display Font Size (px):</label>
+				<div class="col-md-2">
+					<label for="displayTextFontSizeInput" class="form-label">Font Size:</label>
 					<input type="number" id="displayTextFontSizeInput" class="form-control" value="40" min="8" max="100" step="1">
 				</div>
 			</div>
@@ -127,7 +125,7 @@
 		</div>
 	</div>
 
-	<div class="my-3 d-flex flex-wrap align-items-center" id="mainControlsContainer">
+	<div class="d-flex flex-wrap align-items-center" id="mainControlsContainer">
 		<button class="btn btn-info me-2 mb-2" data-bs-toggle="modal" data-bs-target="#aiGenerateModal">
 			<i class="fas fa-robot"></i> Generate with AI
 		</button>
@@ -172,13 +170,13 @@
 
 	<!-- Playback Controls Container - Will be fixed to bottom -->
 	<div id="playbackControlsContainer">
-		<button id="speakNextBtn" class="btn btn-primary me-2">
-			<i class="fas fa-play-circle"></i> Speak Next Chunk
+		<button id="speakNextBtn" class="btn btn-lg btn-primary me-2">
+			<i class="fas fa-play-circle"></i> Continue Speaking Out Loud
 		</button>
-		<button id="playAllBtn" class="btn btn-success me-2">
+		<button id="playAllBtn" class="btn btn-lg btn-success me-2">
 			<i class="fas fa-forward"></i> Play All
 		</button>
-		<button id="stopPlaybackBtn" class="btn btn-danger" disabled> <!-- Initially disabled, not hidden -->
+		<button id="stopPlaybackBtn" class="btn btn-lg btn-danger" disabled>
 			<i class="fas fa-stop-circle"></i> Stop
 		</button>
 	</div>
