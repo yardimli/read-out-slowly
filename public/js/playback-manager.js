@@ -529,13 +529,22 @@ class PlaybackManager {
 							const currentChunkSpanInDOM = document.getElementById(currentChunkData.id);
 							if (currentChunkSpanInDOM) {
 								currentChunkSpanInDOM.classList.add('highlight');
-								currentChunkSpanInDOM.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+								currentChunkSpanInDOM.scrollIntoView({ behavior: 'smooth', block: 'center' });
 								
 								setTimeout(() => {
-									window.scrollBy({
-										top: 100,
-										behavior: 'smooth'
-									});
+									if (!currentChunkSpanInDOM || signal.aborted) return; // Check element and abort signal
+									
+									const rect = currentChunkSpanInDOM.getBoundingClientRect();
+									const viewportHeight = window.innerHeight;
+									
+									// Approx height of fixed playback controls + desired margin above them
+									const playbackControlsHeight = this.elements.playbackControlsContainer.offsetHeight || 80;
+									const desiredBottomMargin = playbackControlsHeight + 20; // 20px extra space
+									
+									if (rect.bottom > viewportHeight - desiredBottomMargin) {
+										const scrollAmount = rect.bottom - (viewportHeight - desiredBottomMargin);
+										window.scrollBy({ top: scrollAmount, behavior: 'smooth' });
+									}
 								}, 100);
 							}
 						},
