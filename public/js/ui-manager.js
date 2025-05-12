@@ -286,7 +286,7 @@ class UIManager {
 		this.elements.toggleControlsBtn.addEventListener('click', () => {
 			this._updateControlsVisibility(false); // Hide all controls
 		});
-		this.elements.h1Title.addEventListener('dblclick', () => {
+		this.elements.h3Title.addEventListener('dblclick', () => {
 			this._updateControlsVisibility(true); // Show all controls
 		});
 	}

@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
 		holdSpinner: document.getElementById('holdSpinner'),
 		holdSpinnerProgressText: document.getElementById('holdSpinnerProgressText'),
 		toggleControlsBtn: document.getElementById('toggleControlsBtn'),
-		h1Title: document.querySelector('h1'),
+		h3Title: document.querySelector('h3'),
 		mainControlsContainer: document.getElementById('mainControlsContainer'),
 		playbackControlsContainer: document.getElementById('playbackControlsContainer'),
 		mainTextareaLabel: document.querySelector('label[for="mainTextarea"]'),
