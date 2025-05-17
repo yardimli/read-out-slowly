@@ -8,10 +8,9 @@
 	<link rel="stylesheet" href="public/vendor/bootstrap5.3.5/css/bootstrap.min.css">
 	<link rel="stylesheet" href="public/vendor/fontawesome-free-6.7.2/css/all.min.css">
 	<link rel="stylesheet" href="public/css/style.css">
-	<!-- Updated reCAPTCHA script for v2 -->
-	<script src="https://www.google.com/recaptcha/api.js" async defer></script>
 	<script>
-		var recaptchaTtsAlreadyVerified = <?php echo json_encode(isset($_SESSION['recaptcha_tts_verified']) && $_SESSION['recaptcha_tts_verified']); ?>;
+		// As all users are verified, this will always be true
+		var recaptchaTtsAlreadyVerified = true;
 	</script>
 </head>
 <body>
@@ -133,12 +132,13 @@
 	<div class="modal fade" id="aiGenerateModal" tabindex="-1" aria-labelledby="aiGenerateModalLabel" aria-hidden="true">
 		<div class="modal-dialog modal-lg">
 			<div class="modal-content">
-				<div class="modal-header"><h5 class="modal-title" id="aiGenerateModalLabel">Generate Text with AI</h5> <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button> </div>
+				<div class="modal-header"><h5 class="modal-title" id="aiGenerateModalLabel">Generate Text with AI</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
 				<div class="modal-body">
 					<div class="mb-3"><label for="aiPromptInput" class="form-label">Enter your prompt for the AI:</label>
-						<input type="text" class="form-control" id="aiPromptInput" placeholder="e.g., Write a short lesson about cats"></div>
-					<!-- Container for reCAPTCHA v2 widget in AI modal -->
-					<div id="aiRecaptchaWidgetContainer" class="mb-3 d-flex justify-content-center"></div>
+						<input type="text" class="form-control" id="aiPromptInput" placeholder="e.g., Write a short lesson about cats">
+					</div>
 					<button id="generateAiTextBtn" class="btn btn-primary mb-3"><i class="fas fa-cogs"></i> Generate</button>
 					<h6>Preview:</h6>
 					<div id="aiPreviewArea" class="p-2 border bg-light rounded" style="min-height: 100px;">
@@ -147,36 +147,11 @@
 				</div>
 				<div class="modal-footer">
 					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-					<button type="button" class="btn btn-success" id="useAiTextBtn" disabled><i class="fas fa-check-circle"></i> Use This Text
-					</button>
+					<button type="button" class="btn btn-success" id="useAiTextBtn" disabled><i class="fas fa-check-circle"></i> Use This Text</button>
 				</div>
 			</div>
 		</div>
 	</div>
-
-	<!-- Generic reCAPTCHA v2 Modal (for TTS or other actions) -->
-	<div class="modal fade" id="recaptchaV2Modal" tabindex="-1" aria-labelledby="recaptchaV2ModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
-		<div class="modal-dialog modal-dialog-centered">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title" id="recaptchaV2ModalLabel">Human Verification</h5>
-					<!-- No close button initially, user must solve or it's handled by JS -->
-				</div>
-				<div class="modal-body">
-					<p>Please complete the verification below to continue.</p>
-					<!-- Container for shared reCAPTCHA v2 widget -->
-					<div id="sharedRecaptchaWidgetContainer" class="mb-3 d-flex justify-content-center">
-						<!-- reCAPTCHA widget will be rendered here by JS -->
-					</div>
-					<div id="recaptchaV2Error" class="text-danger small" style="display:none;"></div>
-				</div>
-				<div class="modal-footer">
-					<button type="button" class="btn btn-secondary" id="cancelRecaptchaV2ModalBtn">Cancel</button>
-				</div>
-			</div>
-		</div>
-	</div>
-
 
 	<!-- Load from LocalStorage Modal -->
 	<div class="modal fade" id="localStorageLoadModal" tabindex="-1" aria-labelledby="localStorageLoadModalLabel" aria-hidden="true">
@@ -204,8 +179,6 @@
 		<button id="loadFromStorageBtn" class="btn btn-warning me-2 mb-2" data-bs-toggle="modal" data-bs-target="#localStorageLoadModal"><i class="fas fa-upload"></i> Load from LocalStorage
 		</button>
 		<button id="pregenerateAllBtn" class="btn btn-secondary me-2 mb-2"><i class="fas fa-cogs"></i> Pregenerate All Audio
-		</button>
-		<button id="toggleControlsBtn" class="btn btn-outline-secondary me-2 mb-2"><i class="fas fa-eye-slash"></i> Hide Controls
 		</button>
 		<!-- Dark Mode Switch -->
 		<div class="form-check form-switch ms-auto mb-2">
@@ -260,11 +233,6 @@
 </div>
 
 <script src="public/vendor/bootstrap5.3.5/js/bootstrap.bundle.min.js"></script>
-<!-- Removed v3 specific ?render= -->
-<script>
-	// This should be your reCAPTCHA v2 Checkbox Site Key
-	const RECAPTCHA_SITE_KEY = '<?php echo htmlspecialchars($_ENV['RECAPTCHA_V2_CHECKBOX_SITE_KEY'] ?? ''); ?>';
-</script>
 <script src="public/js/ui-manager.js"></script>
 <script src="public/js/playback-manager.js"></script>
 <script src="public/js/script.js"></script>

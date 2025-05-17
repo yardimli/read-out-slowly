@@ -1,19 +1,15 @@
 class PlaybackManager {
-	constructor(elements, showStatusCallback, requestRecaptchaFn) {
+	constructor(elements, showStatusCallback) {
 		this.elements = elements;
 		this.showStatus = showStatusCallback;
-		this.requestRecaptchaV2Verification = requestRecaptchaFn; // This is uiManager.requestRecaptchaV2Verification
 		this.currentTextPosition = 0;
 		this.audioCache = {};
 		this.isPlaying = false;
 		this.playAllAbortController = null;
-		this.newTextLoadedForSinglePlay = true;
 		this.pregenerateAbortController = null;
-		this.holdTimeoutId = null;
 		this.holdStartTime = 0;
 		this.holdAnimationId = null;
 		this.isHoldingSpeakNext = false;
-		this.isTtsRecaptchaSessionVerified = false; // New property for TTS reCAPTCHA session status
 		
 		this.unreadTextOpacity = 0.3;
 		
@@ -94,7 +90,6 @@ class PlaybackManager {
 	
 	handleTextChange(isNewTextSource = false) {
 		this.currentTextPosition = 0;
-		this.newTextLoadedForSinglePlay = true;
 		
 		if (isNewTextSource) {
 			// Message is usually set by UIManager for load/AI use
@@ -152,7 +147,6 @@ class PlaybackManager {
 	
 	handleChunkSettingsChange() {
 		this.currentTextPosition = 0;
-		this.newTextLoadedForSinglePlay = true;
 		this.stopCurrentPlayback(true);
 		this.audioCache = {};
 		this.showStatus('Chunk settings changed. Playback reset.', 'info', 1500);
@@ -161,12 +155,8 @@ class PlaybackManager {
 	
 	handleTtsSettingsChange() {
 		this.currentTextPosition = 0;
-		this.newTextLoadedForSinglePlay = true;
 		this.stopCurrentPlayback(true); // Stop everything, including pregeneration
 		this.audioCache = {}; // Clear cache as voice/engine affects audio
-		// this.isTtsRecaptchaSessionVerified = false; // TTS settings change might invalidate previous audio, but session is server-side.
-		// Server will still respect session if valid.
-		// UIManager shows status and updates displayText for this
 	}
 	
 	_simpleHash(str) {
@@ -267,7 +257,6 @@ class PlaybackManager {
 		if (this.currentTextPosition >= fullText.length && fullText.length > 0) {
 			this.showStatus('End of text reached.', 'info');
 			this.currentTextPosition = 0; // Reset for next play from start
-			this.newTextLoadedForSinglePlay = true;
 			return null;
 		}
 		if (fullText.length === 0) {
@@ -282,7 +271,6 @@ class PlaybackManager {
 		if (remainingText.trim() === "") { // Only whitespace remaining
 			this.currentTextPosition = fullText.length; // Advance to end
 			this.showStatus('End of text reached (trailing whitespace).', 'info');
-			this.newTextLoadedForSinglePlay = true;
 			return null;
 		}
 		
@@ -294,7 +282,6 @@ class PlaybackManager {
 				return this.getNextChunk(); // Try to get the next actual content
 			}
 			this.currentTextPosition = fullText.length;
-			this.newTextLoadedForSinglePlay = true;
 			return null;
 		}
 		return {text: chunkResult.text, newPosition: this.currentTextPosition + chunkResult.length};
@@ -406,11 +393,15 @@ class PlaybackManager {
 	
 	async fetchAndCacheChunk(textChunk, signal) {
 		if (!textChunk || textChunk.trim() === "") return {success: false, message: "Empty chunk"};
+		
 		const trimmedTextChunk = textChunk.trim();
 		const ttsEngine = this.elements.ttsEngineSelect.value;
 		const ttsVoice = this.elements.ttsVoiceSelect.value;
-		const ttsLanguageCode = (ttsEngine === 'google' && !this.elements.ttsLanguageCodeSelect.disabled) ? this.elements.ttsLanguageCodeSelect.value : 'n/a';
+		const ttsLanguageCode = (ttsEngine === 'google' && !this.elements.ttsLanguageCodeSelect.disabled)
+			? this.elements.ttsLanguageCodeSelect.value
+			: 'n/a';
 		const volume = this.elements.volumeInput.value;
+		
 		const chunkHash = this._simpleHash(trimmedTextChunk + ttsEngine + ttsVoice + ttsLanguageCode + volume);
 		
 		if (this.audioCache[chunkHash]) {
@@ -420,14 +411,6 @@ class PlaybackManager {
 		this.showStatus(`Requesting TTS for: "${trimmedTextChunk.substring(0, 30)}..."`, 'info', null);
 		
 		try {
-			let recaptchaToken = null;
-			
-			if (!this.isTtsRecaptchaSessionVerified) {
-				recaptchaToken = await this.requestRecaptchaV2Verification('text_to_speech');
-			} else {
-				this.showStatus('TTS reCAPTCHA previously verified for this session.', 'info', 2000);
-			}
-			
 			const formData = new FormData();
 			formData.append('action', 'text_to_speech_chunk');
 			formData.append('text_chunk', trimmedTextChunk);
@@ -436,32 +419,26 @@ class PlaybackManager {
 			formData.append('language_code', ttsLanguageCode);
 			formData.append('volume', volume);
 			
-			if (recaptchaToken) { // Only append if session was not verified and we got a token
-				formData.append('g-recaptcha-response', recaptchaToken);
-			}
-			// If recaptchaToken is null, server relies on PHP session status
-			
+			// If signal is provided (for abortion), use it in the fetch options
 			const fetchOptions = {method: 'POST', body: formData};
 			if (signal) fetchOptions.signal = signal;
 			
 			const response = await fetch(window.location.href, fetchOptions);
+			
 			if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
 			
 			const result = await response.json();
 			
+			// Check if we need verification (session expired)
+			if (result.require_verification) {
+				window.location.reload(); // Reload the page to trigger verification flow
+				throw new Error('Session expired. Please reload the page to continue.');
+			}
+			
 			if (result.success && result.fileUrl) {
 				this.audioCache[chunkHash] = result.fileUrl;
-				if (result.recaptcha_session_verified) { // Check flag from server
-					this.isTtsRecaptchaSessionVerified = true;
-				}
 				return {success: true, cached: false, url: result.fileUrl};
 			} else {
-				// If server indicates reCAPTCHA is now required again (e.g. session expired)
-				if (!result.success && result.message &&
-					(result.message.toLowerCase().includes('recaptcha') || result.message.toLowerCase().includes('verification') || result.message.toLowerCase().includes('human verification'))) {
-					this.isTtsRecaptchaSessionVerified = false; // Reset client flag
-					this.showStatus('Re-verification may be needed. ' + result.message, 'warning');
-				}
 				throw new Error(result.message || 'TTS generation failed on server');
 			}
 		} catch (error) {
@@ -469,10 +446,6 @@ class PlaybackManager {
 				this.showStatus('TTS request aborted.', 'info');
 			} else {
 				console.error("TTS request error:", error);
-				// If error message indicates reCAPTCHA failure, reset client flag
-				if (error.message && (error.message.toLowerCase().includes('recaptcha') || error.message.toLowerCase().includes('verification') || error.message.toLowerCase().includes('human verification'))) {
-					this.isTtsRecaptchaSessionVerified = false;
-				}
 				this.showStatus('TTS Request Error: ' + error.message, 'danger');
 			}
 			throw error; // Re-throw to be caught by caller
@@ -550,7 +523,7 @@ class PlaybackManager {
 				}
 			}
 		} catch (error) {
-			if (error.name !== 'AbortError' && !(error.message && error.message.toLowerCase().includes('recaptcha'))) {
+			if (error.name !== 'AbortError') {
 				this.showStatus('Playback Error: ' + error.message, 'danger');
 			}
 			if (onEndedCallback) onEndedCallback(error);
@@ -863,7 +836,6 @@ class PlaybackManager {
 			document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
 		}
 		this.playAllAbortController = null;
-		this.newTextLoadedForSinglePlay = true;
 	}
 	
 	async pregenerateAllAudioHandler() {

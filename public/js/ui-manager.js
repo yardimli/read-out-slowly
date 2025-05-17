@@ -3,12 +3,7 @@ class UIManager {
 		this.elements = elements;
 		this.playbackManager = null;
 		this.statusVerbosity = 'errors';
-		this.controlElementsToToggle = [
-			this.elements.settingsCard,
-			this.elements.mainControlsContainer,
-			this.elements.mainTextarea,
-			this.elements.mainTextareaLabel,
-		];
+		
 		this.voices = {
 			openai: [
 				{value: "alloy", text: "Alloy"}, {value: "echo", text: "Echo"},
@@ -35,13 +30,6 @@ class UIManager {
 				},
 			]
 		};
-		this.recaptchaV2WidgetIdAI = null;
-		this.recaptchaV2WidgetIdShared = null;
-		this.currentRecaptchaResolve = null;
-		this.currentRecaptchaReject = null;
-		this.isRecaptchaVerificationInProgress = false;
-		this.activeRecaptchaContext = null; // 'ai' or 'shared'
-		this.recaptchaModalInstance = null;
 		this.aiModalInstance = null;
 		this.isFloatingButtonEnabled = false;
 	}
@@ -55,250 +43,17 @@ class UIManager {
 		this._bindSettingsListeners();
 		this._bindAIGenerationListeners();
 		this._bindLocalStorageListeners();
-		this._bindHideShowControlsListeners();
 		this._bindMainTextareaListener();
 		this._bindChunkUnitListener();
 		this._bindTtsSettingsListeners();
 		this._updateVoiceAndLanguageUI();
 		document.body.classList.add('playback-controls-active');
 		
-		if (this.elements.recaptchaV2Modal) {
-			this.recaptchaModalInstance = new bootstrap.Modal(this.elements.recaptchaV2Modal);
-			this.elements.cancelRecaptchaV2ModalBtn.addEventListener('click', () => {
-				if (this.currentRecaptchaReject) {
-					this.currentRecaptchaReject(new Error('reCAPTCHA verification cancelled by user.'));
-				}
-				this._resetRecaptchaState();
-				this.recaptchaModalInstance.hide();
-				// Reset the shared reCAPTCHA widget if it exists
-				if (this.recaptchaV2WidgetIdShared !== null && typeof grecaptcha !== 'undefined') {
-					try {
-						grecaptcha.reset(this.recaptchaV2WidgetIdShared);
-					} catch (e) {
-						console.warn("Error resetting shared reCAPTCHA widget:", e);
-					}
-				}
-			});
-		}
-		
 		if (this.elements.aiGenerateModal) {
 			this.aiModalInstance = new bootstrap.Modal(this.elements.aiGenerateModal);
-			this.elements.aiGenerateModal.addEventListener('hidden.bs.modal', () => {
-				if (this.recaptchaV2WidgetIdAI !== null && typeof grecaptcha !== 'undefined') {
-					try {
-						grecaptcha.reset(this.recaptchaV2WidgetIdAI);
-					} catch (e) {
-						console.warn("Error resetting AI reCAPTCHA widget on modal hide:", e);
-					}
-				}
-				// If a verification was pending for AI modal and it's closed, reject it.
-				if (this.isRecaptchaVerificationInProgress && this.currentRecaptchaReject && this.activeRecaptchaContext === 'ai') {
-					// Check if the error is due to modal closure or another reason
-					if (this.elements.aiGenerateModal && !this.elements.aiGenerateModal.classList.contains('show')) {
-						this.currentRecaptchaReject(new Error('AI reCAPTCHA modal closed before completion.'));
-					} // else, another error might have occurred, let that propagate
-				}
-				// Don't call _resetRecaptchaState() here if an error is already being handled by reject.
-				// Only reset if it was a clean close without an active promise being rejected for other reasons.
-			});
-			
-			this.elements.aiGenerateModal.addEventListener('shown.bs.modal', () => {
-				// Render reCAPTCHA in AI modal if not already present
-				if (this.elements.aiRecaptchaWidgetContainer && !this.elements.aiRecaptchaWidgetContainer.hasChildNodes() && this.recaptchaV2WidgetIdAI === null) {
-					if (typeof grecaptcha !== 'undefined' && typeof grecaptcha.render !== 'undefined' && RECAPTCHA_SITE_KEY) {
-						try {
-							this.recaptchaV2WidgetIdAI = grecaptcha.render(this.elements.aiRecaptchaWidgetContainer, {
-								'sitekey': RECAPTCHA_SITE_KEY,
-								'callback': 'onRecaptchaV2Success', // Global callback
-								'expired-callback': 'onRecaptchaV2Expired', // Global callback
-								'error-callback': 'onRecaptchaV2Error' // Global callback
-							});
-						} catch (e) {
-							console.error("Error rendering reCAPTCHA in AI modal 'shown' event:", e);
-							this.showStatus('Could not load reCAPTCHA widget.', 'danger');
-							if (this.elements.aiRecaptchaWidgetContainer) this.elements.aiRecaptchaWidgetContainer.innerHTML = '<p class="text-danger">reCAPTCHA failed to load. Please ensure you are online and try again.</p>';
-						}
-					} else {
-						this.showStatus('reCAPTCHA not available or not configured.', 'warning');
-						if (this.elements.aiRecaptchaWidgetContainer) this.elements.aiRecaptchaWidgetContainer.innerHTML = '<p class="text-danger">reCAPTCHA script not loaded or site key missing.</p>';
-					}
-				}
-			});
 		}
-		
-		globalRecaptchaV2SuccessCallback = this._handleRecaptchaV2Success.bind(this);
-		globalRecaptchaV2ExpiredCallback = this._handleRecaptchaV2Expired.bind(this);
-		globalRecaptchaV2ErrorCallback = this._handleRecaptchaV2Error.bind(this);
 	}
-	
-	_resetRecaptchaState() {
-		this.isRecaptchaVerificationInProgress = false;
-		this.currentRecaptchaResolve = null;
-		this.currentRecaptchaReject = null;
-		this.activeRecaptchaContext = null;
-		if (this.elements.recaptchaV2Error) this.elements.recaptchaV2Error.style.display = 'none';
-	}
-	
-	_handleRecaptchaV2Success(token) {
-		if (!this.isRecaptchaVerificationInProgress || !this.currentRecaptchaResolve) {
-			// This can happen if reCAPTCHA is solved outside of an active request flow (e.g. user solves it in AI modal before clicking generate)
-			// Or if state was reset prematurely.
-			console.warn("reCAPTCHA success callback triggered without active verification promise.");
-			// If it's the AI context and the widget exists, we can just let the generate button pick up the token.
-			// If it's shared context, this is less likely to be a problem as modal would typically be open.
-			return;
-		}
-		this.currentRecaptchaResolve(token);
-		if (this.activeRecaptchaContext === 'shared' && this.recaptchaModalInstance) {
-			this.recaptchaModalInstance.hide();
-		}
-		// For AI modal, it stays open. The promise resolution handles the next step.
-		this._resetRecaptchaState();
-	}
-	
-	_handleRecaptchaV2Expired() {
-		const message = 'reCAPTCHA challenge expired. Please try again.';
-		this.showStatus(message, 'warning');
-		if (this.currentRecaptchaReject) {
-			this.currentRecaptchaReject(new Error(message));
-		}
-		
-		if (this.activeRecaptchaContext === 'shared') {
-			if (this.elements.recaptchaV2Error) {
-				this.elements.recaptchaV2Error.textContent = message;
-				this.elements.recaptchaV2Error.style.display = 'block';
-			}
-			if (this.recaptchaV2WidgetIdShared !== null && typeof grecaptcha !== 'undefined') {
-				try {
-					grecaptcha.reset(this.recaptchaV2WidgetIdShared);
-				} catch (e) {
-					console.warn("Error resetting shared reCAPTCHA on expiry:", e);
-				}
-			}
-		} else if (this.activeRecaptchaContext === 'ai') {
-			if (this.recaptchaV2WidgetIdAI !== null && typeof grecaptcha !== 'undefined') {
-				try {
-					grecaptcha.reset(this.recaptchaV2WidgetIdAI);
-				} catch (e) {
-					console.warn("Error resetting AI reCAPTCHA on expiry:", e);
-				}
-			}
-			// Update UI in AI modal if needed
-			if (this.elements.aiPreviewArea && this.elements.aiGenerateModal.classList.contains('show')) {
-				this.elements.aiPreviewArea.innerHTML = `<p class="text-warning">${message}</p>`;
-			}
-		}
-		this._resetRecaptchaState(); // Reset state after handling expiry
-	}
-	
-	_handleRecaptchaV2Error() {
-		const message = 'reCAPTCHA error. Please check your connection or try again later.';
-		this.showStatus(message, 'danger');
-		if (this.currentRecaptchaReject) {
-			this.currentRecaptchaReject(new Error(message));
-		}
-		
-		if (this.activeRecaptchaContext === 'shared') {
-			if (this.elements.recaptchaV2Error) {
-				this.elements.recaptchaV2Error.textContent = 'Error loading challenge. Please try again.';
-				this.elements.recaptchaV2Error.style.display = 'block';
-			}
-			// Optionally try to reset, or advise refresh
-		} else if (this.activeRecaptchaContext === 'ai') {
-			if (this.elements.aiPreviewArea && this.elements.aiGenerateModal.classList.contains('show')) {
-				this.elements.aiPreviewArea.innerHTML = `<p class="text-danger">${message}</p>`;
-			}
-		}
-		this._resetRecaptchaState(); // Reset state after handling error
-	}
-	
-	requestRecaptchaV2Verification(actionName, context = 'shared') {
-		return new Promise((resolve, reject) => {
-			if (recaptchaTtsAlreadyVerified) {
-				this.showStatus('TTS reCAPTCHA session already verified.', 'info', 1500);
-				// Return a dummy token - the server will check session status
-				resolve("session_verified");
-				return;
-			}
-			
-			if (typeof grecaptcha === 'undefined' || typeof grecaptcha.render === 'undefined') {
-				const msg = 'reCAPTCHA library not loaded. Please refresh.';
-				this.showStatus(msg, 'danger');
-				reject(new Error(msg));
-				return;
-			}
-			
-			if (typeof RECAPTCHA_SITE_KEY === 'undefined' || !RECAPTCHA_SITE_KEY) {
-				const msg = 'reCAPTCHA site key not configured. Action disabled.';
-				this.showStatus(msg, 'danger');
-				reject(new Error(msg));
-				return;
-			}
-			
-			if (this.isRecaptchaVerificationInProgress) {
-				// If a verification is already in progress for a *different* context, reject.
-				if (this.activeRecaptchaContext !== context) {
-					reject(new Error('Another reCAPTCHA verification is already in progress for a different action.'));
-					return;
-				}
-				console.warn("New reCAPTCHA verification requested while one might be active for the same context:", context);
-			}
-			
-			this.isRecaptchaVerificationInProgress = true;
-			this.currentRecaptchaResolve = resolve;
-			this.currentRecaptchaReject = reject;
-			this.activeRecaptchaContext = context;
-			
-			let widgetIdProperty, widgetContainerElement, widgetId;
-			
-			if (context === 'ai') {
-				widgetIdProperty = 'recaptchaV2WidgetIdAI';
-				widgetContainerElement = this.elements.aiRecaptchaWidgetContainer;
-				widgetId = this.recaptchaV2WidgetIdAI;
-				// AI modal is assumed to be already visible or managed by its own logic.
-			} else { // 'shared'
-				widgetIdProperty = 'recaptchaV2WidgetIdShared';
-				widgetContainerElement = this.elements.sharedRecaptchaWidgetContainer;
-				widgetId = this.recaptchaV2WidgetIdShared;
-				if (this.elements.recaptchaV2Error) this.elements.recaptchaV2Error.style.display = 'none';
-				this.recaptchaModalInstance.show();
-			}
-			
-			if (!widgetContainerElement) {
-				console.error(`reCAPTCHA container element for context '${context}' not found.`);
-				this.currentRecaptchaReject(new Error(`reCAPTCHA UI element missing for ${context}.`));
-				this._resetRecaptchaState();
-				if (context === 'shared' && this.recaptchaModalInstance) this.recaptchaModalInstance.hide();
-				return;
-			}
-			
-			try {
-				// If widget doesn't exist or container is empty, render it.
-				// Otherwise, reset the existing widget.
-				if (widgetId === null || !widgetContainerElement.hasChildNodes()) {
-					widgetContainerElement.innerHTML = ''; // Clear previous attempts or messages
-					this[widgetIdProperty] = grecaptcha.render(widgetContainerElement, {
-						'sitekey': RECAPTCHA_SITE_KEY,
-						'callback': 'onRecaptchaV2Success',
-						'expired-callback': 'onRecaptchaV2Expired',
-						'error-callback': 'onRecaptchaV2Error',
-						'theme': document.documentElement.getAttribute('data-bs-theme') || 'light'
-					});
-				} else {
-					grecaptcha.reset(widgetId);
-				}
-			} catch (e) {
-				console.error(`Error rendering or resetting reCAPTCHA for context '${context}':`, e);
-				const msg = 'Failed to display reCAPTCHA. Please refresh.';
-				this.showStatus(msg, 'danger');
-				this.currentRecaptchaReject(new Error(msg + " Details: " + e.message));
-				this._resetRecaptchaState();
-				if (context === 'shared' && this.recaptchaModalInstance) this.recaptchaModalInstance.hide();
-			}
-		});
-	}
-	
-	
+
 	_loadAndApplyInitialSettings() {
 		// Inside _loadAndApplyInitialSettings method
 		const floatingButtonEnabled = localStorage.getItem('floatingPlayButtonEnabled');
@@ -653,38 +408,27 @@ class UIManager {
 			}
 			
 			this.elements.generateAiTextBtn.disabled = true;
-			this.elements.generateAiTextBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying...';
-			this.elements.aiPreviewArea.innerHTML = 'Verifying human presence... <i class="fas fa-user-check"></i>';
+			this.elements.generateAiTextBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+			this.elements.aiPreviewArea.innerHTML = 'Generating text with AI... <i class="fas fa-robot fa-spin"></i>';
 			this.elements.useAiTextBtn.disabled = true;
 			
-			let recaptchaToken;
 			try {
-				// Always try to get a response from an existing widget first (if user solved it before clicking generate)
-				if (this.recaptchaV2WidgetIdAI !== null && typeof grecaptcha !== 'undefined') {
-					recaptchaToken = grecaptcha.getResponse(this.recaptchaV2WidgetIdAI);
-				}
-				
-				if (!recaptchaToken) {
-					this.elements.aiPreviewArea.innerHTML = 'Please complete the reCAPTCHA challenge above.';
-					// RequestRecaptchaV2Verification will render/reset the widget if needed
-					// and its promise resolves when the user solves it.
-					recaptchaToken = await this.requestRecaptchaV2Verification('generate_ai_text', 'ai');
-				}
-				// If requestRecaptchaV2Verification was called, its promise resolved, so we have a token.
-				
-				this.elements.generateAiTextBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
-				this.elements.aiPreviewArea.innerHTML = 'Generating text with AI... <i class="fas fa-robot fa-spin"></i>';
-				
 				const formData = new FormData();
 				formData.append('action', 'generate_text_ai');
 				formData.append('prompt', prompt);
-				formData.append('g-recaptcha-response', recaptchaToken);
 				
 				const response = await fetch(window.location.href, {
 					method: 'POST',
 					body: formData
 				});
+				
 				const result = await response.json();
+				
+				// Check if we need verification (session expired)
+				if (result.require_verification) {
+					window.location.reload(); // Reload the page to trigger verification flow
+					return;
+				}
 				
 				if (result.success && result.text) {
 					this.elements.aiPreviewArea.innerHTML = result.text.replace(/\n/g, '<br>');
@@ -694,27 +438,15 @@ class UIManager {
 					this.elements.aiPreviewArea.textContent = 'Error: ' + (result.message || 'Could not generate text.');
 					this.showStatus('AI generation failed: ' + (result.message || 'Unknown error'), 'danger');
 				}
-				
-			} catch (error) { // Catches errors from requestRecaptchaV2Verification or fetch
+			} catch (error) {
 				this.elements.aiPreviewArea.textContent = 'Error: ' + error.message;
 				this.showStatus('AI generation process error: ' + error.message, 'danger');
-				// Ensure reCAPTCHA state is clean if it was a reCAPTCHA error
-				if (error.message.toLowerCase().includes('recaptcha')) {
-					this._resetRecaptchaState(); // Clean up if reCAPTCHA promise rejected
-				}
 			} finally {
 				this.elements.generateAiTextBtn.disabled = false;
 				this.elements.generateAiTextBtn.innerHTML = '<i class="fas fa-cogs"></i> Generate';
-				// Reset the AI reCAPTCHA widget for the next attempt
-				if (this.recaptchaV2WidgetIdAI !== null && typeof grecaptcha !== 'undefined') {
-					try {
-						grecaptcha.reset(this.recaptchaV2WidgetIdAI);
-					} catch (e) {
-						console.warn("Error resetting AI reCAPTCHA widget post-generation:", e);
-					}
-				}
 			}
 		});
+		
 		
 		this.elements.useAiTextBtn.addEventListener('click', () => {
 			const textToUse = this.elements.aiPreviewArea.innerHTML.replace(/<br\s*\/?>/gi, '\n');
@@ -812,36 +544,6 @@ class UIManager {
 		
 		// Listener for when the modal is about to be shown
 		this.elements.localStorageLoadModal.addEventListener('show.bs.modal', () => this._populateLoadModal());
-	}
-	
-	_updateControlsVisibility(show) {
-		this.controlElementsToToggle.forEach(el => {
-			if (el) {
-				if (show) {
-					el.classList.remove('d-none');
-				} else {
-					el.classList.add('d-none');
-				}
-			}
-		});
-		if (this.elements.toggleControlsBtn) {
-			this.elements.toggleControlsBtn.innerHTML = show ?
-				'<i class="fas fa-eye-slash"></i> Hide Controls' :
-				'<i class="fas fa-eye"></i> Show Controls'; // Change icon/text
-		}
-	}
-	
-	_bindHideShowControlsListeners() {
-		let controlsVisible = true; // Initial state
-		this.elements.toggleControlsBtn.addEventListener('click', () => {
-			controlsVisible = !controlsVisible;
-			this._updateControlsVisibility(controlsVisible);
-		});
-		
-		this.elements.h3Title.addEventListener('dblclick', () => {
-			controlsVisible = true; // Always show on double click
-			this._updateControlsVisibility(controlsVisible);
-		});
 	}
 	
 	_bindMainTextareaListener() {

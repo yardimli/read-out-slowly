@@ -48,7 +48,6 @@ document.addEventListener('DOMContentLoaded', () => {
 		holdSpinnerOverlay: document.getElementById('holdSpinnerOverlay'),
 		holdSpinner: document.getElementById('holdSpinner'),
 		holdSpinnerProgressText: document.getElementById('holdSpinnerProgressText'),
-		toggleControlsBtn: document.getElementById('toggleControlsBtn'),
 		h3Title: document.querySelector('h3'),
 		mainControlsContainer: document.getElementById('mainControlsContainer'),
 		playbackControlsContainer: document.getElementById('playbackControlsContainer'),
