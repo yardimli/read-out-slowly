@@ -69,6 +69,13 @@ document.addEventListener('DOMContentLoaded', () => {
 		sharedRecaptchaWidgetContainer: document.getElementById('sharedRecaptchaWidgetContainer'), // For shared modal
 		recaptchaV2Error: document.getElementById('recaptchaV2Error'), // Error display in shared modal
 		cancelRecaptchaV2ModalBtn: document.getElementById('cancelRecaptchaV2ModalBtn'), // Cancel button in shared modal
+		
+		unreadTextOpacityInput: document.getElementById('unreadTextOpacityInput'),
+		unreadTextOpacityValue: document.getElementById('unreadTextOpacityValue'),
+		
+		floatingPlayButtonSwitch: document.getElementById('floatingPlayButtonSwitch'),
+		floatingPlayButton: document.getElementById('floatingPlayButton'),
+		
 	};
 	
 	const uiManagerInstance = new UIManager(DOMElements);

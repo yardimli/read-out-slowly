@@ -10,6 +10,9 @@
 	<link rel="stylesheet" href="public/css/style.css">
 	<!-- Updated reCAPTCHA script for v2 -->
 	<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+	<script>
+		var recaptchaTtsAlreadyVerified = <?php echo json_encode(isset($_SESSION['recaptcha_tts_verified']) && $_SESSION['recaptcha_tts_verified']); ?>;
+	</script>
 </head>
 <body>
 <div class="container mt-4">
@@ -22,22 +25,28 @@
 		</div>
 		<div class="card-body">
 			<div class="row">
-				<div class="col-md-4 mb-3">
-					<label for="statusVerbositySelect" class="form-label">Status Messages:</label>
+				<div class="col-md-3 mb-3">
+					<label for="statusVerbositySelect" class="form-label"><br>Status Messages:</label>
 					<select id="statusVerbositySelect" class="form-select">
 						<option value="all">Show All</option>
 						<option value="errors" selected>Errors & Warnings Only</option>
 						<option value="none">Show None</option>
 					</select>
 				</div>
-				<div class="col-md-4 mb-3">
-					<label for="speakNextHoldDuration" class="form-label">"Speak Next" Hold Duration (ms, 0 to disable):</label>
+				<div class="col-md-3 mb-3">
+					<label for="speakNextHoldDuration" class="form-label">"Speak Next" Hold Duration<br> (ms, 0 to disable):</label>
 					<input type="number" id="speakNextHoldDuration" class="form-control" value="750" min="0" step="50">
 				</div>
-				<div class="col-md-4 mb-3 align-self-center">
+				<div class="col-md-3 mb-3 align-self-center">
 					<div class="form-check form-switch">
 						<input class="form-check-input" type="checkbox" role="switch" id="togglePlayAllBtnSwitch" checked>
 						<label class="form-check-label" for="togglePlayAllBtnSwitch">Show "Play All" and "Stop"</label>
+					</div>
+				</div>
+				<div class="col-md-3 mb-3 align-self-center">
+					<div class="form-check form-switch">
+						<input class="form-check-input" type="checkbox" role="switch" id="floatingPlayButtonSwitch">
+						<label class="form-check-label" for="floatingPlayButtonSwitch">Float "Continue Speaking" button near text</label>
 					</div>
 				</div>
 			</div>
@@ -57,7 +66,12 @@
 					<label for="displayTextFontSizeInput" class="form-label">Font Size:</label>
 					<input type="number" id="displayTextFontSizeInput" class="form-control" value="40" min="8" max="100" step="1">
 				</div>
-				<div class="col-md-3">
+				<div class="col-md-2">
+					<label for="unreadTextOpacityInput" class="form-label">Unread Text Opacity:</label>
+					<input type="range" id="unreadTextOpacityInput" class="form-control" value="30" min="0" max="100" step="5">
+					<small class="text-muted" id="unreadTextOpacityValue">30%</small>
+				</div>
+				<div class="col-md-2">
 					<label for="volumeInput" class="form-label">Volume Boost (1-10):</label>
 					<input type="number" id="volumeInput" class="form-control" value="6" min="0.1" max="10" step="0.5">
 				</div>
@@ -214,6 +228,9 @@
 			<div id="displayText">
 				Text chunks will appear here...
 			</div>
+			<button id="floatingPlayButton" class="btn btn-primary">
+				<i class="fas fa-play-circle"></i> Continue
+			</button>
 		</div>
 	</div>
 

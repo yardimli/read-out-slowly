@@ -14,25 +14,97 @@ class PlaybackManager {
 		this.holdAnimationId = null;
 		this.isHoldingSpeakNext = false;
 		this.isTtsRecaptchaSessionVerified = false; // New property for TTS reCAPTCHA session status
+		
+		this.unreadTextOpacity = 0.3;
+		
+		this.isFloatingButtonEnabled = false;
+		this.floatingButtonElement = null;
 	}
 	
 	init() {
 		this.elements.stopPlaybackBtn.disabled = true;
+		this.floatingButtonElement = document.getElementById('floatingPlayButton');
 		this._bindPlaybackButtonListeners();
+		
+		this.isFloatingButtonEnabled = this.elements.floatingPlayButtonSwitch.checked;
+		
+		if (this.floatingButtonElement) {
+			this.floatingButtonElement.addEventListener('click', () => {
+				this.executeSpeakNextAction();
+			});
+		}
+	}
+	
+	updateFloatingButtonVisibility(isEnabled) {
+		this.isFloatingButtonEnabled = isEnabled;
+		
+		// Hide or show the main speak next button based on the floating button toggle
+		if (this.elements.speakNextBtn) {
+			this.elements.speakNextBtn.style.display = isEnabled ? 'none' : 'inline-block';
+		}
+		
+		if (!isEnabled && this.floatingButtonElement) {
+			this.floatingButtonElement.style.display = 'none';
+		}
 	}
 	
 	handleTextChange(isNewTextSource = false) {
 		this.currentTextPosition = 0;
 		this.newTextLoadedForSinglePlay = true;
+		
 		if (isNewTextSource) {
 			// Message is usually set by UIManager for load/AI use
 		} else {
-			this.elements.displayText.innerHTML = "Text changed. Click 'Speak Next Chunk' or 'Play All'.";
+			this.displayFullTextWithOpacity();
 		}
+		
 		this.stopCurrentPlayback(true); // Stop pregeneration too
 		this.audioCache = {}; // Clear cache on any text change
-		// this.isTtsRecaptchaSessionVerified = false; // Optionally reset on major text change if desired, but session is server-side
 	}
+	
+	displayFullTextWithOpacity() {
+		const fullText = this.elements.mainTextarea.value;
+		
+		if (fullText.trim() === '') {
+			this.elements.displayText.innerHTML = "Textarea is empty. Please enter or generate text.";
+			return;
+		}
+		
+		// If at position 0, display all text with unread styling
+		if (this.currentTextPosition === 0) {
+			this.elements.displayText.innerHTML = `<span class="unread-text">${fullText.replace(/\n/g, '<br>')}</span>`;
+			return;
+		}
+		
+		// Split text into read and unread parts
+		const readPart = fullText.substring(0, this.currentTextPosition);
+		const unreadPart = fullText.substring(this.currentTextPosition);
+		
+		if (unreadPart.trim() === '') {
+			// All text has been read
+			this.elements.displayText.innerHTML = readPart.replace(/\n/g, '<br>');
+			return;
+		}
+		
+		// Construct HTML with read and unread parts
+		const html = `
+        <span class="read-part">${readPart.replace(/\n/g, '<br>')}</span>
+        <span class="unread-text">${unreadPart.replace(/\n/g, '<br>')}</span>
+    `;
+		
+		this.elements.displayText.innerHTML = html;
+		
+		// Apply current opacity setting
+		this.applyUnreadTextOpacity();
+	}
+	
+	applyUnreadTextOpacity() {
+		const unreadElements = document.querySelectorAll('.unread-text');
+		unreadElements.forEach(el => {
+			el.style.opacity = this.unreadTextOpacity;
+		});
+	}
+	
 	
 	handleChunkSettingsChange() {
 		this.currentTextPosition = 0;
@@ -212,6 +284,7 @@ class PlaybackManager {
 			this.elements.playAllBtn.disabled = false;
 			this.elements.pregenerateAllBtn.disabled = false;
 			this.elements.stopPlaybackBtn.disabled = true;
+			
 			if (onEndedCallback) onEndedCallback();
 		};
 		this.elements.audioPlayer.onerror = (e) => {
@@ -233,6 +306,7 @@ class PlaybackManager {
 		if (this.elements.audioPlayer && !this.elements.audioPlayer.paused) {
 			this.elements.audioPlayer.pause();
 		}
+		
 		this.elements.audioPlayer.currentTime = 0;
 		this.elements.audioPlayer.src = ""; // Release audio resource
 		this.isPlaying = false;
@@ -248,15 +322,25 @@ class PlaybackManager {
 			this.playAllAbortController.abort();
 			this.playAllAbortController = null;
 		}
+		
 		if (fromPregenerateOrSettingsChange && this.pregenerateAbortController) {
 			this.pregenerateAbortController.abort();
 			this.pregenerateAbortController = null;
 			this.elements.pregenerateAllBtn.innerHTML = '<i class="fas fa-cogs"></i> Pregenerate All Audio';
 		}
+		
 		this.cancelSpeakNextHold();
 		if (wasPlayingOrPregenerating) {
 			this.showStatus('Playback/Pregeneration stopped.', 'info', 1500);
 		}
+		
+		if (this.floatingButtonElement) {
+			this.floatingButtonElement.style.display = 'none';
+		}
+		
+		document.querySelectorAll('.continue-button-space').forEach(el => {
+			el.parentNode.removeChild(el);
+		});
 	}
 	
 	async fetchAndCacheChunk(textChunk, signal) {
@@ -373,32 +457,77 @@ class PlaybackManager {
 	executeSpeakNextAction() {
 		if (this.isPlaying) return;
 		this.stopCurrentPlayback();
+		
+		if (this.floatingButtonElement) {
+			this.floatingButtonElement.style.display = 'none';
+		}
+		
 		const chunkData = this.getNextChunk();
 		if (chunkData && chunkData.text.trim() !== "") {
 			this.currentTextPosition = chunkData.newPosition;
 			const chunkId = 'chunk-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+			
 			this.getAndPlayAudio(
 				chunkData.text.trim(),
-				() => { // onEndedCallback
+				() => {
+					// onEndedCallback
 					const currentChunkSpan = document.getElementById(chunkId);
 					if (currentChunkSpan) currentChunkSpan.classList.remove('highlight');
-				},
-				() => { // onPlayStartCallback
-					if (this.newTextLoadedForSinglePlay) {
-						this.elements.displayText.innerHTML = '';
-						this.newTextLoadedForSinglePlay = false;
-					}
-					const newChunkHtml = `<span id="${chunkId}">${chunkData.text.replace(/\n/g, '<br>')}</span>`;
-					this.elements.displayText.insertAdjacentHTML('beforeend', newChunkHtml);
 					
-					const currentChunkSpan = document.getElementById(chunkId);
-					if (currentChunkSpan) {
-						document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
-						currentChunkSpan.classList.add('highlight');
-						currentChunkSpan.scrollIntoView({behavior: 'smooth', block: 'center'});
+					// Position the floating button if enabled
+					console.log(this.isFloatingButtonEnabled, this.floatingButtonElement, currentChunkSpan);
+					// In executeSpeakNextAction or where the positioning happens:
+					if (this.isFloatingButtonEnabled && this.floatingButtonElement && currentChunkSpan) {
+						const rect = currentChunkSpan.getBoundingClientRect();
+						const cardRect = this.elements.displayTextCard.getBoundingClientRect();
+						
+						// Position relative to the card, not the window
+						const buttonTop = rect.bottom - cardRect.top + 5;
+						const buttonLeft = rect.left - cardRect.left;
+						
+						this.floatingButtonElement.style.top = `${buttonTop}px`;
+						this.floatingButtonElement.style.left = `${buttonLeft}px`;
+						this.floatingButtonElement.style.display = 'block';
+						
+						// Create a spacer after the current chunk
+						const spacer = document.createElement('span');
+						spacer.className = 'continue-button-space';
+						if (currentChunkSpan.nextSibling) {
+							currentChunkSpan.parentNode.insertBefore(spacer, currentChunkSpan.nextSibling);
+						} else {
+							currentChunkSpan.parentNode.appendChild(spacer);
+						}
+					}
+				},
+				() => {
+					// onPlayStartCallback
+					// Update display with full text and current position
+					this.displayFullTextWithOpacity();
+					
+					// Find the element that should be highlighted
+					const readPart = document.querySelector('.read-part');
+					if (readPart) {
+						// Create a temporary span for the current chunk
+						const tempSpan = document.createElement('span');
+						tempSpan.id = chunkId;
+						tempSpan.classList.add('highlight');
+						tempSpan.innerHTML = chunkData.text.replace(/\n/g, '<br>');
+						
+						// Replace the last part of read text with highlighted version
+						const readPartHtml = readPart.innerHTML;
+						const nonHighlightedChunk = chunkData.text.replace(/\n/g, '<br>');
+						if (readPartHtml.endsWith(nonHighlightedChunk)) {
+							readPart.innerHTML = readPartHtml.substring(0, readPartHtml.length - nonHighlightedChunk.length);
+							readPart.appendChild(tempSpan);
+						}
+						
+						// Scroll to the highlighted text
+						tempSpan.scrollIntoView({behavior: 'smooth', block: 'center'});
+						
+						// Adjust scroll position for fixed playback controls
 						setTimeout(() => {
-							if (!currentChunkSpan || (this.playAllAbortController && this.playAllAbortController.signal.aborted)) return;
-							const rect = currentChunkSpan.getBoundingClientRect();
+							if (!tempSpan || (this.playAllAbortController && this.playAllAbortController.signal.aborted)) return;
+							const rect = tempSpan.getBoundingClientRect();
 							const viewportHeight = window.innerHeight;
 							const playbackControlsHeight = this.elements.playbackControlsContainer.offsetHeight || 80;
 							const desiredBottomMargin = playbackControlsHeight + 20;
@@ -411,12 +540,12 @@ class PlaybackManager {
 				}
 			);
 		} else {
-			if (this.elements.mainTextarea.value.trim().length > 0 && this.currentTextPosition === 0 && this.newTextLoadedForSinglePlay) {
-				this.elements.displayText.innerHTML = "End of text. Click 'Speak Next Chunk' to restart or load new text.";
-			} else if (this.elements.mainTextarea.value.trim().length === 0) {
+			if (this.elements.mainTextarea.value.trim().length > 0) {
+				// End of text reached
+				this.displayFullTextWithOpacity();
+				this.showStatus('End of text reached.', 'info');
+			} else {
 				this.elements.displayText.innerHTML = "Textarea is empty. Please enter or generate text.";
-			} else if (!chunkData || (chunkData && chunkData.text.trim() === "")) {
-				this.elements.displayText.innerHTML = "End of text. Load new text or click 'Speak Next Chunk' to restart.";
 			}
 		}
 	}
@@ -526,6 +655,8 @@ class PlaybackManager {
 		
 		let currentOverallTextPosition = 0;
 		
+		this.displayFullTextWithOpacity();
+		
 		for (let i = 0; i < chunksToPlay.length; i++) {
 			if (signal.aborted) {
 				this.showStatus('Playback stopped.', 'info');
@@ -558,21 +689,36 @@ class PlaybackManager {
 						},
 						() => { // onPlayStartCallback
 							document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
-							const currentChunkSpanInDOM = document.getElementById(currentChunkData.id);
-							if (currentChunkSpanInDOM) {
-								currentChunkSpanInDOM.classList.add('highlight');
-								currentChunkSpanInDOM.scrollIntoView({behavior: 'smooth', block: 'center'});
-								setTimeout(() => {
-									if (!currentChunkSpanInDOM || signal.aborted) return;
-									const rect = currentChunkSpanInDOM.getBoundingClientRect();
-									const viewportHeight = window.innerHeight;
-									const playbackControlsHeight = this.elements.playbackControlsContainer.offsetHeight || 80;
-									const desiredBottomMargin = playbackControlsHeight + 20;
-									if (rect.bottom > viewportHeight - desiredBottomMargin) {
-										const scrollAmount = rect.bottom - (viewportHeight - desiredBottomMargin);
-										window.scrollBy({top: scrollAmount, behavior: 'smooth'});
-									}
-								}, 100);
+							
+							this.displayFullTextWithOpacity();
+							
+							const readPart = document.querySelector('.read-part');
+							if (readPart) {
+								const tempSpan = document.createElement('span');
+								tempSpan.id = currentChunkData.id;
+								tempSpan.classList.add('highlight');
+								tempSpan.innerHTML = currentChunkData.originalChunk.replace(/\n/g, '<br>');
+								
+								// Add the highlighted span
+								readPart.appendChild(tempSpan);
+								
+								// Scroll handling...
+								const currentChunkSpanInDOM = document.getElementById(currentChunkData.id);
+								if (currentChunkSpanInDOM) {
+									currentChunkSpanInDOM.classList.add('highlight');
+									currentChunkSpanInDOM.scrollIntoView({behavior: 'smooth', block: 'center'});
+									setTimeout(() => {
+										if (!currentChunkSpanInDOM || signal.aborted) return;
+										const rect = currentChunkSpanInDOM.getBoundingClientRect();
+										const viewportHeight = window.innerHeight;
+										const playbackControlsHeight = this.elements.playbackControlsContainer.offsetHeight || 80;
+										const desiredBottomMargin = playbackControlsHeight + 20;
+										if (rect.bottom > viewportHeight - desiredBottomMargin) {
+											const scrollAmount = rect.bottom - (viewportHeight - desiredBottomMargin);
+											window.scrollBy({top: scrollAmount, behavior: 'smooth'});
+										}
+									}, 100);
+								}
 							}
 						},
 						signal

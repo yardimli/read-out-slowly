@@ -43,6 +43,7 @@ class UIManager {
 		this.activeRecaptchaContext = null; // 'ai' or 'shared'
 		this.recaptchaModalInstance = null;
 		this.aiModalInstance = null;
+		this.isFloatingButtonEnabled = false;
 	}
 	
 	setPlaybackManager(playbackManager) {
@@ -213,12 +214,20 @@ class UIManager {
 	
 	requestRecaptchaV2Verification(actionName, context = 'shared') {
 		return new Promise((resolve, reject) => {
+			if (recaptchaTtsAlreadyVerified) {
+				this.showStatus('TTS reCAPTCHA session already verified.', 'info', 1500);
+				// Return a dummy token - the server will check session status
+				resolve("session_verified");
+				return;
+			}
+			
 			if (typeof grecaptcha === 'undefined' || typeof grecaptcha.render === 'undefined') {
 				const msg = 'reCAPTCHA library not loaded. Please refresh.';
 				this.showStatus(msg, 'danger');
 				reject(new Error(msg));
 				return;
 			}
+			
 			if (typeof RECAPTCHA_SITE_KEY === 'undefined' || !RECAPTCHA_SITE_KEY) {
 				const msg = 'reCAPTCHA site key not configured. Action disabled.';
 				this.showStatus(msg, 'danger');
@@ -232,11 +241,6 @@ class UIManager {
 					reject(new Error('Another reCAPTCHA verification is already in progress for a different action.'));
 					return;
 				}
-				// If for the same context, the existing promise should be awaited by the caller.
-				// However, this function creates a new promise. This might lead to issues if called multiple times rapidly.
-				// For now, let's assume UI disables buttons to prevent rapid calls for the same context.
-				// If a promise is already active for this context, we should ideally return that.
-				// But for simplicity, we'll proceed, and the global callbacks will handle the latest one.
 				console.warn("New reCAPTCHA verification requested while one might be active for the same context:", context);
 			}
 			
@@ -296,6 +300,33 @@ class UIManager {
 	
 	
 	_loadAndApplyInitialSettings() {
+		// Inside _loadAndApplyInitialSettings method
+		const floatingButtonEnabled = localStorage.getItem('floatingPlayButtonEnabled');
+		if (floatingButtonEnabled !== null) {
+			this.elements.floatingPlayButtonSwitch.checked = (floatingButtonEnabled === 'true');
+			this.isFloatingButtonEnabled = (floatingButtonEnabled === 'true');
+			
+			// Set initial visibility of the speak next button
+			if (this.elements.speakNextBtn) {
+				this.elements.speakNextBtn.style.display = this.isFloatingButtonEnabled ? 'none' : 'inline-block';
+			}
+		} else {
+			localStorage.setItem('floatingPlayButtonEnabled', 'false');
+		}
+		
+		const savedUnreadOpacity = localStorage.getItem('unreadTextOpacity');
+		if (savedUnreadOpacity) {
+			this.elements.unreadTextOpacityInput.value = savedUnreadOpacity;
+			this.elements.unreadTextOpacityValue.textContent = `${savedUnreadOpacity}%`;
+			if (this.playbackManager) {
+				this.playbackManager.unreadTextOpacity = parseInt(savedUnreadOpacity) / 100;
+				this.playbackManager.applyUnreadTextOpacity();
+			}
+		} else {
+			localStorage.setItem('unreadTextOpacity', this.elements.unreadTextOpacityInput.value);
+			this.elements.unreadTextOpacityValue.textContent = `${this.elements.unreadTextOpacityInput.value}%`;
+		}
+		
 		const savedVerbosity = localStorage.getItem('statusVerbosity');
 		if (savedVerbosity) {
 			this.elements.statusVerbositySelect.value = savedVerbosity;
@@ -367,6 +398,37 @@ class UIManager {
 	}
 	
 	_bindSettingsListeners() {
+		this.elements.floatingPlayButtonSwitch.addEventListener('change', (e) => {
+			const isEnabled = e.target.checked;
+			localStorage.setItem('floatingPlayButtonEnabled', isEnabled);
+			this.isFloatingButtonEnabled = isEnabled;
+			this.showStatus(`Floating "Continue Speaking" button ${isEnabled ? 'enabled' : 'disabled'}.`, 'info', 1500);
+			
+			// Update the display of the main speak next button
+			if (this.elements.speakNextBtn) {
+				this.elements.speakNextBtn.style.display = isEnabled ? 'none' : 'inline-block';
+			}
+			
+			if (this.elements.floatingPlayButton) {
+				this.elements.floatingPlayButton.style.display = isEnabled ? 'block' : 'none';
+			}
+			
+			if (this.playbackManager) {
+				this.playbackManager.updateFloatingButtonVisibility(isEnabled);
+			}
+		});
+		
+		this.elements.unreadTextOpacityInput.addEventListener('input', (e) => {
+			const opacity = e.target.value;
+			this.elements.unreadTextOpacityValue.textContent = `${opacity}%`;
+			localStorage.setItem('unreadTextOpacity', opacity);
+			
+			if (this.playbackManager) {
+				this.playbackManager.unreadTextOpacity = parseInt(opacity) / 100;
+				this.playbackManager.applyUnreadTextOpacity();
+			}
+		});
+		
 		this.elements.statusVerbositySelect.addEventListener('change', (e) => {
 			this.statusVerbosity = e.target.value;
 			localStorage.setItem('statusVerbosity', this.statusVerbosity);
