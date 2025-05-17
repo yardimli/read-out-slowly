@@ -838,113 +838,6 @@ class PlaybackManager {
 		this.playAllAbortController = null;
 	}
 	
-	async pregenerateAllAudioHandler() {
-		if (this.isPlaying || this.pregenerateAbortController) {
-			this.showStatus('Cannot pregenerate while another operation is active.', 'warning');
-			return;
-		}
-		this.stopCurrentPlayback();
-		this.pregenerateAbortController = new AbortController();
-		const signal = this.pregenerateAbortController.signal;
-		const fullText = this.elements.mainTextarea.value;
-		
-		if (!fullText.trim()) {
-			this.showStatus('Textarea is empty. Nothing to pregenerate.', 'warning');
-			this.pregenerateAbortController = null;
-			return;
-		}
-		
-		this.elements.pregenerateAllBtn.disabled = true;
-		this.elements.pregenerateAllBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pregenerating...';
-		this.elements.speakNextBtn.disabled = true;
-		if (this.isFloatingButtonEnabled) {
-			this.floatingPlayButtonElement.style.display = 'none';
-		}
-		this.elements.playAllBtn.disabled = true;
-		this.elements.stopPlaybackBtn.disabled = false; // Allow stopping pregeneration
-		
-		let tempPosition = 0;
-		const chunksToFetch = [];
-		const countPerChunk = parseInt(this.elements.wordsPerChunkInput.value) || (this.elements.chunkUnitSelect.value === 'words' ? 10 : 1);
-		const unit = this.elements.chunkUnitSelect.value;
-		
-		while (tempPosition < fullText.length) {
-			const remainingText = fullText.substring(tempPosition);
-			if (remainingText.trim() === "") break;
-			const chunkResult = this._extractChunkInternal(remainingText, countPerChunk, unit);
-			if (chunkResult.length === 0) break;
-			if (chunkResult.text.trim() !== "") {
-				chunksToFetch.push(chunkResult.text.trim());
-			}
-			tempPosition += chunkResult.length;
-		}
-		
-		if (chunksToFetch.length === 0) {
-			this.showStatus('No speakable chunks found to pregenerate.', 'info');
-			this.elements.pregenerateAllBtn.disabled = false;
-			this.elements.pregenerateAllBtn.innerHTML = '<i class="fas fa-cogs"></i> Pregenerate All Audio';
-			this.elements.speakNextBtn.disabled = false;
-			if (this.isFloatingButtonEnabled) {
-				this.floatingPlayButtonElement.style.display = 'block';
-			}
-			this.elements.playAllBtn.disabled = false;
-			this.elements.stopPlaybackBtn.disabled = true;
-			this.pregenerateAbortController = null;
-			return;
-		}
-		
-		let successCount = 0;
-		let failCount = 0;
-		this.showStatus(`Starting pregeneration for ${chunksToFetch.length} chunks...`, 'info', null);
-		
-		for (let i = 0; i < chunksToFetch.length; i++) {
-			if (signal.aborted) {
-				this.showStatus(`Pregeneration stopped by user. ${successCount} chunks cached.`, 'info');
-				break;
-			}
-			const chunkText = chunksToFetch[i];
-			
-			const ttsEngine = this.elements.ttsEngineSelect.value;
-			const ttsVoice = this.elements.ttsVoiceSelect.value;
-			const ttsLanguageCode = (ttsEngine === 'google' && !this.elements.ttsLanguageCodeSelect.disabled) ? this.elements.ttsLanguageCodeSelect.value : 'n/a';
-			const volume = this.elements.volumeInput.value;
-			const chunkHash = this._simpleHash(chunkText + ttsEngine + ttsVoice + ttsLanguageCode + volume);
-			
-			if (this.audioCache[chunkHash]) {
-				successCount++;
-				this.showStatus(`Chunk ${i + 1}/${chunksToFetch.length} already cached. Skipped.`, 'info', 1500);
-				continue;
-			}
-			
-			this.showStatus(`Pregenerating chunk ${i + 1}/${chunksToFetch.length}: "${chunkText.substring(0, 20)}..."`, 'info', null);
-			try {
-				await this.fetchAndCacheChunk(chunkText, signal); // Signal is passed here
-				successCount++;
-			} catch (error) {
-				failCount++;
-				if (error.name === 'AbortError') break;
-			}
-		}
-		
-		if (!signal.aborted) {
-			if (failCount > 0) {
-				this.showStatus(`Pregeneration complete. ${successCount} chunks cached, ${failCount} failed.`, 'warning');
-			} else {
-				this.showStatus(`Pregeneration complete. All ${successCount} chunks cached successfully.`, 'success');
-			}
-		}
-		
-		this.elements.pregenerateAllBtn.disabled = false;
-		this.elements.pregenerateAllBtn.innerHTML = '<i class="fas fa-cogs"></i> Pregenerate All Audio';
-		this.elements.speakNextBtn.disabled = false;
-		if (this.isFloatingButtonEnabled) {
-			this.floatingPlayButtonElement.style.display = 'block';
-		}
-		this.elements.playAllBtn.disabled = false;
-		this.elements.stopPlaybackBtn.disabled = true;
-		this.pregenerateAbortController = null;
-	}
-	
 	_bindPlaybackButtonListeners() {
 		this.elements.speakNextBtn.addEventListener('mousedown', (e) => {
 			if (e.button !== 0 || this.isPlaying || this.isHoldingSpeakNext) return;
@@ -981,6 +874,5 @@ class PlaybackManager {
 		
 		this.elements.playAllBtn.addEventListener('click', () => this.playAllChunks());
 		this.elements.stopPlaybackBtn.addEventListener('click', () => this.stopCurrentPlayback(true));
-		this.elements.pregenerateAllBtn.addEventListener('click', () => this.pregenerateAllAudioHandler());
 	}
 }
