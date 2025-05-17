@@ -57,6 +57,28 @@ document.addEventListener('DOMContentLoaded', () => {
 		}
 	}
 	
+	function modifyClassStyle(className, property, value) {
+		// Loop through all style sheets
+		for (let i = 0; i < document.styleSheets.length; i++) {
+			const styleSheet = document.styleSheets[i];
+			try {
+				// Get all CSS rules in this stylesheet
+				const rules = styleSheet.cssRules || styleSheet.rules;
+				
+				for (let j = 0; j < rules.length; j++) {
+					// Find the rule that matches our class
+					if (rules[j].selectorText === className) {
+						rules[j].style[property] = value;
+						return true;
+					}
+				}
+			} catch (e) {
+				// Security error, can't access cross-origin stylesheets
+			}
+		}
+		return false;
+	}
+	
 	function loadSettingsAndText() {
 		const textToRead = localStorage.getItem('textToReadOutSlowly');
 		const textTitle = localStorage.getItem('textToReadOutSlowlyTitle') || "Reading Text";
@@ -118,6 +140,9 @@ document.addEventListener('DOMContentLoaded', () => {
 		
 		const unreadOpacitySetting = localStorage.getItem('unreadTextOpacity') || '30';
 		playbackManagerInstance.unreadTextOpacity = parseInt(unreadOpacitySetting) / 100;
+		
+		modifyClassStyle('.unread-text', 'opacity', `${playbackManagerInstance.unreadTextOpacity}`);
+		
 		
 		playbackManagerInstance.init();
 		
