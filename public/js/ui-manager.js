@@ -745,6 +745,8 @@ class UIManager {
 				if (error.name === 'AbortError') break;
 			}
 		}
+		this.elements.pregenerateAllBtn.disabled = false;
+		this.elements.pregenerateAllBtn.innerHTML = '<i class="fas fa-cogs"></i> Pregenerate All Audio';
 		
 		if (chunksToFetch.length === 0) {
 			this.showStatus('No speakable chunks found to pregenerate.', 'info');
