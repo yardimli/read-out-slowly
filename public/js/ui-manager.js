@@ -310,6 +310,9 @@ class UIManager {
 			if (this.elements.speakNextBtn) {
 				this.elements.speakNextBtn.style.display = this.isFloatingButtonEnabled ? 'none' : 'inline-block';
 			}
+			if (this.elements.floatingPlayButton) {
+				this.elements.floatingPlayButton.style.display = this.isFloatingButtonEnabled ? 'block' : 'none';
+			}
 		} else {
 			localStorage.setItem('floatingPlayButtonEnabled', 'false');
 		}
@@ -515,6 +518,50 @@ class UIManager {
 		localStorage.setItem('ttsVoice', voiceSelect.value);
 		voiceSelect.removeAttribute('data-saved-voice'); // Clear after use
 		
+		if (selectedEngine === 'browser') {
+			// Hide the voice selection from server-side options
+			voiceSelect.style.display = 'none';
+			// Show the language option but update it for browser's voices
+			langContainer.style.display = '';
+			langSelect.disabled = false;
+			
+			// We'll create a new select element for browser voices
+			if (!this.elements.browserVoiceSelectContainer) {
+				const container = document.createElement('div');
+				container.className = 'col-md-4 mb-3';
+				container.id = 'browserVoiceSelectContainer';
+				
+				const label = document.createElement('label');
+				label.className = 'form-label';
+				label.innerHTML = '<i class="fas fa-microphone text-success me-1"></i>Browser Voice:';
+				label.setAttribute('for', 'browserVoiceSelect');
+				
+				const select = document.createElement('select');
+				select.className = 'form-select';
+				select.id = 'browserVoiceSelect';
+				
+				container.appendChild(label);
+				container.appendChild(select);
+				
+				// Insert after the tts voice select (which is now hidden)
+				voiceSelect.parentNode.after(container);
+				this.elements.browserVoiceSelect = select;
+				this.elements.browserVoiceSelectContainer = container;
+				
+				// Populate browser voices
+				this._populateBrowserVoices();
+			} else {
+				this.elements.browserVoiceSelectContainer.style.display = '';
+			}
+		} else {
+			// For OpenAI or Google, show the server-side voice options
+			voiceSelect.style.display = '';
+			// Hide browser voice select if it exists
+			if (this.elements.browserVoiceSelectContainer) {
+				this.elements.browserVoiceSelectContainer.style.display = 'none';
+			}
+		}
+		
 		if (selectedEngine === 'google') {
 			langContainer.style.display = '';
 			langSelect.disabled = false;
@@ -522,6 +569,60 @@ class UIManager {
 			langContainer.style.display = 'none';
 			langSelect.disabled = true;
 		}
+	}
+	
+	_populateBrowserVoices() {
+		if (!this.elements.browserVoiceSelect || !window.speechSynthesis) return;
+		
+		// Clear existing options
+		this.elements.browserVoiceSelect.innerHTML = '';
+		
+		// Default option
+		const defaultOption = document.createElement('option');
+		defaultOption.value = '';
+		defaultOption.text = 'Default Voice';
+		this.elements.browserVoiceSelect.appendChild(defaultOption);
+		
+		// Get available voices and add them
+		let voices = [];
+		
+		// Function to populate voices
+		const populateVoiceList = () => {
+			voices = window.speechSynthesis.getVoices();
+			
+			voices.forEach(voice => {
+				const option = document.createElement('option');
+				option.value = voice.name;
+				option.text = `${voice.name} (${voice.lang})`;
+				this.elements.browserVoiceSelect.appendChild(option);
+			});
+			
+			// Set saved voice if available
+			const savedBrowserVoice = localStorage.getItem('browserTtsVoice');
+			if (savedBrowserVoice) {
+				// Find if the saved voice exists in the current browser
+				for (let i = 0; i < this.elements.browserVoiceSelect.options.length; i++) {
+					if (this.elements.browserVoiceSelect.options[i].value === savedBrowserVoice) {
+						this.elements.browserVoiceSelect.selectedIndex = i;
+						break;
+					}
+				}
+			}
+		};
+		
+		// Chrome loads voices asynchronously
+		if (speechSynthesis.onvoiceschanged !== undefined) {
+			speechSynthesis.onvoiceschanged = populateVoiceList;
+		}
+		
+		// Initial population attempt
+		populateVoiceList();
+		
+		// Add event listener for voice selection change
+		this.elements.browserVoiceSelect.addEventListener('change', (e) => {
+			localStorage.setItem('browserTtsVoice', e.target.value);
+			if (this.playbackManager) this.playbackManager.handleTtsSettingsChange();
+		});
 	}
 	
 	_bindTtsSettingsListeners() {

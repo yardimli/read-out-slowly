@@ -82,6 +82,7 @@
 					<select id="ttsEngineSelect" class="form-select">
 						<option value="openai" selected>OpenAI</option>
 						<option value="google">Google</option>
+						<option value="browser">Browser Speech</option>
 					</select>
 				</div>
 				<div class="col-md-4 mb-3">

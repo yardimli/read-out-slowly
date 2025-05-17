@@ -18,21 +18,65 @@ class PlaybackManager {
 		this.unreadTextOpacity = 0.3;
 		
 		this.isFloatingButtonEnabled = false;
-		this.floatingButtonElement = null;
+		this.floatingPlayButtonElement = null;
 	}
 	
 	init() {
 		this.elements.stopPlaybackBtn.disabled = true;
-		this.floatingButtonElement = document.getElementById('floatingPlayButton');
+		this.floatingPlayButtonElement = document.getElementById('floatingPlayButton');
 		this._bindPlaybackButtonListeners();
 		
 		this.isFloatingButtonEnabled = this.elements.floatingPlayButtonSwitch.checked;
 		
-		if (this.floatingButtonElement) {
-			this.floatingButtonElement.addEventListener('click', () => {
+		if (this.floatingPlayButtonElement) {
+			this.floatingPlayButtonElement.addEventListener('click', () => {
 				this.executeSpeakNextAction();
 			});
 		}
+	}
+	
+	async browserTextToSpeech(text, voiceName, languageCode, volume) {
+		return new Promise((resolve, reject) => {
+			if (!window.speechSynthesis) {
+				reject(new Error("Browser speech synthesis not supported"));
+				return;
+			}
+			volume = 100; // Set volume to 100% for browser TTS
+			
+			// Cancel any ongoing speech
+			window.speechSynthesis.cancel();
+			
+			const utterance = new SpeechSynthesisUtterance(text);
+			
+			// Set voice if specified
+			if (voiceName) {
+				const voices = window.speechSynthesis.getVoices();
+				const selectedVoice = voices.find(voice => voice.name === voiceName);
+				if (selectedVoice) {
+					utterance.voice = selectedVoice;
+				}
+			}
+			
+			// Set language if not using a specific voice
+			if (!utterance.voice && languageCode) {
+				utterance.lang = languageCode;
+			}
+			
+			// Set volume (0 to 1)
+			utterance.volume = Math.min(1, Math.max(0, volume / 10)); // Convert 0-10 scale to 0-1
+			
+			// Set up event listeners
+			utterance.onend = () => {
+				resolve();
+			};
+			
+			utterance.onerror = (event) => {
+				reject(new Error(`Speech synthesis error: ${event.error}`));
+			};
+			
+			// Start speaking
+			window.speechSynthesis.speak(utterance);
+		});
 	}
 	
 	updateFloatingButtonVisibility(isEnabled) {
@@ -43,8 +87,8 @@ class PlaybackManager {
 			this.elements.speakNextBtn.style.display = isEnabled ? 'none' : 'inline-block';
 		}
 		
-		if (!isEnabled && this.floatingButtonElement) {
-			this.floatingButtonElement.style.display = 'none';
+		if (this.floatingPlayButtonElement) {
+			this.floatingPlayButtonElement.style.display = isEnabled ? 'block' : 'none';
 		}
 	}
 	
@@ -262,6 +306,9 @@ class PlaybackManager {
 			.then(() => {
 				this.isPlaying = true;
 				this.elements.speakNextBtn.disabled = true;
+				if (this.isFloatingButtonEnabled) {
+					this.floatingPlayButtonElement.style.display = 'none';
+				}
 				this.elements.playAllBtn.disabled = true;
 				this.elements.pregenerateAllBtn.disabled = true;
 				this.elements.stopPlaybackBtn.disabled = false;
@@ -272,6 +319,9 @@ class PlaybackManager {
 				this.showStatus("Error playing audio: " + error.message, 'danger');
 				this.isPlaying = false;
 				this.elements.speakNextBtn.disabled = false;
+				if (this.isFloatingButtonEnabled) {
+					this.floatingPlayButtonElement.style.display = 'block';
+				}
 				this.elements.playAllBtn.disabled = false;
 				this.elements.pregenerateAllBtn.disabled = false;
 				this.elements.stopPlaybackBtn.disabled = true;
@@ -281,6 +331,9 @@ class PlaybackManager {
 		this.elements.audioPlayer.onended = () => {
 			this.isPlaying = false;
 			this.elements.speakNextBtn.disabled = false;
+			if (this.isFloatingButtonEnabled) {
+				this.floatingPlayButtonElement.style.display = 'block';
+			}
 			this.elements.playAllBtn.disabled = false;
 			this.elements.pregenerateAllBtn.disabled = false;
 			this.elements.stopPlaybackBtn.disabled = true;
@@ -292,6 +345,9 @@ class PlaybackManager {
 			this.showStatus("Audio player error. Check console.", 'danger');
 			this.isPlaying = false;
 			this.elements.speakNextBtn.disabled = false;
+			if (this.isFloatingButtonEnabled) {
+				this.floatingPlayButtonElement.style.display = 'block';
+			}
 			this.elements.playAllBtn.disabled = false;
 			this.elements.pregenerateAllBtn.disabled = false;
 			this.elements.stopPlaybackBtn.disabled = true;
@@ -303,6 +359,11 @@ class PlaybackManager {
 		const wasPlayingOrPregenerating = this.isPlaying || this.playAllAbortController || (fromPregenerateOrSettingsChange && this.pregenerateAbortController);
 		if (!this.isPlaying && !this.playAllAbortController && !(fromPregenerateOrSettingsChange && this.pregenerateAbortController)) return;
 		
+		// Stop browser speech synthesis if it's being used
+		if (window.speechSynthesis) {
+			window.speechSynthesis.cancel();
+		}
+		
 		if (this.elements.audioPlayer && !this.elements.audioPlayer.paused) {
 			this.elements.audioPlayer.pause();
 		}
@@ -312,6 +373,9 @@ class PlaybackManager {
 		this.isPlaying = false;
 		
 		this.elements.speakNextBtn.disabled = false;
+		if (this.isFloatingButtonEnabled) {
+			this.floatingPlayButtonElement.style.display = 'block';
+		}
 		this.elements.playAllBtn.disabled = false;
 		this.elements.pregenerateAllBtn.disabled = false;
 		this.elements.stopPlaybackBtn.disabled = true;
@@ -334,13 +398,10 @@ class PlaybackManager {
 			this.showStatus('Playback/Pregeneration stopped.', 'info', 1500);
 		}
 		
-		if (this.floatingButtonElement) {
-			this.floatingButtonElement.style.display = 'none';
+		if (this.floatingPlayButtonElement) {
+			this.floatingPlayButtonElement.style.display = 'none';
 		}
 		
-		document.querySelectorAll('.continue-button-space').forEach(el => {
-			el.parentNode.removeChild(el);
-		});
 	}
 	
 	async fetchAndCacheChunk(textChunk, signal) {
@@ -423,25 +484,70 @@ class PlaybackManager {
 			if (onEndedCallback) onEndedCallback();
 			return;
 		}
+		
 		const trimmedTextChunk = textChunk.trim();
 		this.elements.speakNextBtn.disabled = true;
+		if (this.isFloatingButtonEnabled) {
+			this.floatingPlayButtonElement.style.display = 'none';
+		}
 		this.elements.playAllBtn.disabled = true;
 		this.elements.pregenerateAllBtn.disabled = true;
 		
 		try {
-			const {success, cached, url} = await this.fetchAndCacheChunk(trimmedTextChunk, signal);
-			if (success) {
-				if (cached) {
-					this.showStatus(`Playing cached audio for: "${trimmedTextChunk.substring(0, 30)}..."`, 'info', 1500);
-				} else {
-					this.showStatus('TTS generated. Playing...', 'success', 1500);
+			// Check if using browser TTS
+			const ttsEngine = this.elements.ttsEngineSelect.value;
+			
+			if (ttsEngine === 'browser') {
+				// Get browser TTS settings
+				const voiceName = this.elements.browserVoiceSelect ? this.elements.browserVoiceSelect.value : '';
+				const languageCode = this.elements.ttsLanguageCodeSelect.value;
+				const volume = parseFloat(this.elements.volumeInput.value);
+				
+				// Call onPlayStartCallback before starting speech
+				if (onPlayStartCallback) onPlayStartCallback();
+				
+				this.showStatus(`Playing with browser speech: "${trimmedTextChunk.substring(0, 30)}..."`, 'info', 1500);
+				this.isPlaying = true;
+				this.elements.stopPlaybackBtn.disabled = false;
+				
+				// Check for abort signal
+				if (signal && signal.aborted) {
+					throw new DOMException('Aborted', 'AbortError');
 				}
-				this.playAudio(url, onEndedCallback, onPlayStartCallback);
-			} else {
-				if (onEndedCallback) onEndedCallback(new Error('Failed to fetch or cache audio'));
+				
+				// Use browser TTS
+				await this.browserTextToSpeech(trimmedTextChunk, voiceName, languageCode, volume);
+				
+				// Handle completion
+				this.isPlaying = false;
 				this.elements.speakNextBtn.disabled = false;
+				if (this.isFloatingButtonEnabled) {
+					this.floatingPlayButtonElement.style.display = 'block';
+				}
 				this.elements.playAllBtn.disabled = false;
 				this.elements.pregenerateAllBtn.disabled = false;
+				this.elements.stopPlaybackBtn.disabled = true;
+				
+				if (onEndedCallback) onEndedCallback();
+			} else {
+				// Original server-side TTS code
+				const {success, cached, url} = await this.fetchAndCacheChunk(trimmedTextChunk, signal);
+				if (success) {
+					if (cached) {
+						this.showStatus(`Playing cached audio for: "${trimmedTextChunk.substring(0, 30)}..."`, 'info', 1500);
+					} else {
+						this.showStatus('TTS generated. Playing...', 'success', 1500);
+					}
+					this.playAudio(url, onEndedCallback, onPlayStartCallback);
+				} else {
+					if (onEndedCallback) onEndedCallback(new Error('Failed to fetch or cache audio'));
+					this.elements.speakNextBtn.disabled = false;
+					if (this.isFloatingButtonEnabled) {
+						this.floatingPlayButtonElement.style.display = 'block';
+					}
+					this.elements.playAllBtn.disabled = false;
+					this.elements.pregenerateAllBtn.disabled = false;
+				}
 			}
 		} catch (error) {
 			if (error.name !== 'AbortError' && !(error.message && error.message.toLowerCase().includes('recaptcha'))) {
@@ -449,6 +555,9 @@ class PlaybackManager {
 			}
 			if (onEndedCallback) onEndedCallback(error);
 			this.elements.speakNextBtn.disabled = false;
+			if (this.isFloatingButtonEnabled) {
+				this.floatingPlayButtonElement.style.display = 'block';
+			}
 			this.elements.playAllBtn.disabled = false;
 			this.elements.pregenerateAllBtn.disabled = false;
 		}
@@ -458,8 +567,8 @@ class PlaybackManager {
 		if (this.isPlaying) return;
 		this.stopCurrentPlayback();
 		
-		if (this.floatingButtonElement) {
-			this.floatingButtonElement.style.display = 'none';
+		if (this.floatingPlayButtonElement) {
+			this.floatingPlayButtonElement.style.display = 'none';
 		}
 		
 		const chunkData = this.getNextChunk();
@@ -475,9 +584,9 @@ class PlaybackManager {
 					if (currentChunkSpan) currentChunkSpan.classList.remove('highlight');
 					
 					// Position the floating button if enabled
-					console.log(this.isFloatingButtonEnabled, this.floatingButtonElement, currentChunkSpan);
+					console.log(this.isFloatingButtonEnabled, this.floatingPlayButtonElement, currentChunkSpan);
 					// In executeSpeakNextAction or where the positioning happens:
-					if (this.isFloatingButtonEnabled && this.floatingButtonElement && currentChunkSpan) {
+					if (this.isFloatingButtonEnabled && this.floatingPlayButtonElement && currentChunkSpan) {
 						const rect = currentChunkSpan.getBoundingClientRect();
 						const cardRect = this.elements.displayTextCard.getBoundingClientRect();
 						
@@ -485,18 +594,9 @@ class PlaybackManager {
 						const buttonTop = rect.bottom - cardRect.top + 5;
 						const buttonLeft = rect.left - cardRect.left;
 						
-						this.floatingButtonElement.style.top = `${buttonTop}px`;
-						this.floatingButtonElement.style.left = `${buttonLeft}px`;
-						this.floatingButtonElement.style.display = 'block';
-						
-						// Create a spacer after the current chunk
-						const spacer = document.createElement('span');
-						spacer.className = 'continue-button-space';
-						if (currentChunkSpan.nextSibling) {
-							currentChunkSpan.parentNode.insertBefore(spacer, currentChunkSpan.nextSibling);
-						} else {
-							currentChunkSpan.parentNode.appendChild(spacer);
-						}
+						this.floatingPlayButtonElement.style.top = `${buttonTop}px`;
+						this.floatingPlayButtonElement.style.left = `${buttonLeft}px`;
+						this.floatingPlayButtonElement.style.display = 'block';
 					}
 				},
 				() => {
@@ -640,6 +740,9 @@ class PlaybackManager {
 			this.showStatus('No speakable chunks found.', 'info');
 			if (this.elements.displayText.innerHTML.trim() === "") this.elements.displayText.innerHTML = "No speakable content found in the textarea.";
 			this.elements.speakNextBtn.disabled = false;
+			if (this.isFloatingButtonEnabled) {
+				this.floatingPlayButtonElement.style.display = 'block';
+			}
 			this.elements.playAllBtn.disabled = false;
 			this.elements.pregenerateAllBtn.disabled = false;
 			this.elements.stopPlaybackBtn.disabled = true;
@@ -649,6 +752,9 @@ class PlaybackManager {
 		
 		this.isPlaying = true;
 		this.elements.speakNextBtn.disabled = true;
+		if (this.isFloatingButtonEnabled) {
+			this.floatingPlayButtonElement.style.display = 'none';
+		}
 		this.elements.playAllBtn.disabled = true;
 		this.elements.pregenerateAllBtn.disabled = true;
 		this.elements.stopPlaybackBtn.disabled = false;
@@ -740,6 +846,9 @@ class PlaybackManager {
 		
 		this.isPlaying = false;
 		this.elements.speakNextBtn.disabled = false;
+		if (this.isFloatingButtonEnabled) {
+			this.floatingPlayButtonElement.style.display = 'block';
+		}
 		this.elements.playAllBtn.disabled = false;
 		this.elements.pregenerateAllBtn.disabled = false;
 		this.elements.stopPlaybackBtn.disabled = true;
@@ -776,6 +885,9 @@ class PlaybackManager {
 		this.elements.pregenerateAllBtn.disabled = true;
 		this.elements.pregenerateAllBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pregenerating...';
 		this.elements.speakNextBtn.disabled = true;
+		if (this.isFloatingButtonEnabled) {
+			this.floatingPlayButtonElement.style.display = 'none';
+		}
 		this.elements.playAllBtn.disabled = true;
 		this.elements.stopPlaybackBtn.disabled = false; // Allow stopping pregeneration
 		
@@ -800,6 +912,9 @@ class PlaybackManager {
 			this.elements.pregenerateAllBtn.disabled = false;
 			this.elements.pregenerateAllBtn.innerHTML = '<i class="fas fa-cogs"></i> Pregenerate All Audio';
 			this.elements.speakNextBtn.disabled = false;
+			if (this.isFloatingButtonEnabled) {
+				this.floatingPlayButtonElement.style.display = 'block';
+			}
 			this.elements.playAllBtn.disabled = false;
 			this.elements.stopPlaybackBtn.disabled = true;
 			this.pregenerateAbortController = null;
@@ -850,6 +965,9 @@ class PlaybackManager {
 		this.elements.pregenerateAllBtn.disabled = false;
 		this.elements.pregenerateAllBtn.innerHTML = '<i class="fas fa-cogs"></i> Pregenerate All Audio';
 		this.elements.speakNextBtn.disabled = false;
+		if (this.isFloatingButtonEnabled) {
+			this.floatingPlayButtonElement.style.display = 'block';
+		}
 		this.elements.playAllBtn.disabled = false;
 		this.elements.stopPlaybackBtn.disabled = true;
 		this.pregenerateAbortController = null;
