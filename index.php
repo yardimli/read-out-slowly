@@ -230,7 +230,7 @@
 				Text chunks will appear here...
 			</div>
 			<button id="floatingPlayButton" class="btn btn-lg btn-primary">
-				<i class="fas fa-play-circle"></i> Continue
+				<i class="fas fa-play-circle"></i> Read
 			</button>
 		</div>
 	</div>
