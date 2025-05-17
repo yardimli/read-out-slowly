@@ -1,28 +1,28 @@
-// Define this utility function in the global scope or a namespace
-// before it's potentially called by managers.
-function getRecaptchaToken(action) {
-	return new Promise((resolve, reject) => {
-		if (typeof grecaptcha === 'undefined' || typeof RECAPTCHA_SITE_KEY === 'undefined' || !RECAPTCHA_SITE_KEY) {
-			console.warn('reCAPTCHA not loaded or site key missing.');
-			// Reject to prevent action if reCAPTCHA is critical
-			reject(new Error('reCAPTCHA not available. Please ensure it is loaded and configured.'));
-			return;
-		}
-		grecaptcha.ready(() => {
-			grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: action })
-				.then((token) => {
-					resolve(token);
-				})
-				.catch((error) => {
-					console.error('Error executing reCAPTCHA:', error);
-					reject(new Error('reCAPTCHA execution failed: ' + error.message));
-				});
-		});
-	});
+// Global reCAPTCHA v2 Callbacks (to be called by Google's script)
+var globalRecaptchaV2SuccessCallback = null;
+var globalRecaptchaV2ExpiredCallback = null;
+var globalRecaptchaV2ErrorCallback = null;
+
+function onRecaptchaV2Success(token) {
+	if (typeof globalRecaptchaV2SuccessCallback === 'function') {
+		globalRecaptchaV2SuccessCallback(token);
+	}
 }
 
+function onRecaptchaV2Expired() {
+	if (typeof globalRecaptchaV2ExpiredCallback === 'function') {
+		globalRecaptchaV2ExpiredCallback();
+	}
+}
+
+function onRecaptchaV2Error() {
+	if (typeof globalRecaptchaV2ErrorCallback === 'function') {
+		globalRecaptchaV2ErrorCallback();
+	}
+}
+
+
 document.addEventListener('DOMContentLoaded', () => {
-	// Select ALL DOM elements here to pass to managers
 	const DOMElements = {
 		mainTextarea: document.getElementById('mainTextarea'),
 		aiPromptInput: document.getElementById('aiPromptInput'),
@@ -32,7 +32,6 @@ document.addEventListener('DOMContentLoaded', () => {
 		saveToStorageBtn: document.getElementById('saveToStorageBtn'),
 		savedTextsList: document.getElementById('savedTextsList'),
 		wordsPerChunkInput: document.getElementById('wordsPerChunkInput'),
-		voiceSelect: document.getElementById('voiceSelect'),
 		volumeInput: document.getElementById('volumeInput'),
 		displayText: document.getElementById('displayText'),
 		displayTextCard: document.getElementById('displayTextCard'),
@@ -59,14 +58,31 @@ document.addEventListener('DOMContentLoaded', () => {
 		pregenerateAllBtn: document.getElementById('pregenerateAllBtn'),
 		aiGenerateModal: document.getElementById('aiGenerateModal'),
 		localStorageLoadModal: document.getElementById('localStorageLoadModal'),
+		// New TTS Elements
+		ttsEngineSelect: document.getElementById('ttsEngineSelect'),
+		ttsVoiceSelect: document.getElementById('ttsVoiceSelect'),
+		ttsLanguageCodeSelect: document.getElementById('ttsLanguageCodeSelect'),
+		ttsLanguageCodeContainer: document.getElementById('ttsLanguageCodeContainer'),
+		// New reCAPTCHA v2 elements
+		aiRecaptchaWidgetContainer: document.getElementById('aiRecaptchaWidgetContainer'), // For AI Modal
+		recaptchaV2Modal: document.getElementById('recaptchaV2Modal'), // The modal itself
+		sharedRecaptchaWidgetContainer: document.getElementById('sharedRecaptchaWidgetContainer'), // For shared modal
+		recaptchaV2Error: document.getElementById('recaptchaV2Error'), // Error display in shared modal
+		cancelRecaptchaV2ModalBtn: document.getElementById('cancelRecaptchaV2ModalBtn'), // Cancel button in shared modal
 	};
 	
-	// Instantiate managers
 	const uiManagerInstance = new UIManager(DOMElements);
-	const playbackManagerInstance = new PlaybackManager(DOMElements, uiManagerInstance.showStatus.bind(uiManagerInstance));
+	
+	const playbackManagerInstance = new PlaybackManager(
+		DOMElements,
+		uiManagerInstance.showStatus.bind(uiManagerInstance),
+		// Pass the UIManager's reCAPTCHA v2 verification function
+		(actionName) => uiManagerInstance.requestRecaptchaV2Verification(actionName, 'shared') // 'shared' context for TTS
+	);
+	
 	uiManagerInstance.setPlaybackManager(playbackManagerInstance);
 	
-	// Initialize both managers
 	uiManagerInstance.init();
 	playbackManagerInstance.init();
+	
 });

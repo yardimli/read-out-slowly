@@ -1,19 +1,19 @@
 class PlaybackManager {
-	constructor(elements, showStatusCallback) {
+	constructor(elements, showStatusCallback, requestRecaptchaFn) {
 		this.elements = elements;
 		this.showStatus = showStatusCallback;
-		
+		this.requestRecaptchaV2Verification = requestRecaptchaFn; // This is uiManager.requestRecaptchaV2Verification
 		this.currentTextPosition = 0;
 		this.audioCache = {};
 		this.isPlaying = false;
 		this.playAllAbortController = null;
 		this.newTextLoadedForSinglePlay = true;
 		this.pregenerateAbortController = null;
-		
 		this.holdTimeoutId = null;
 		this.holdStartTime = 0;
 		this.holdAnimationId = null;
 		this.isHoldingSpeakNext = false;
+		this.isTtsRecaptchaSessionVerified = false; // New property for TTS reCAPTCHA session status
 	}
 	
 	init() {
@@ -21,7 +21,7 @@ class PlaybackManager {
 		this._bindPlaybackButtonListeners();
 	}
 	
-	handleTextChange(isNewTextSource = false) { // isNewTextSource (e.g. loaded from AI/storage) vs user typing
+	handleTextChange(isNewTextSource = false) {
 		this.currentTextPosition = 0;
 		this.newTextLoadedForSinglePlay = true;
 		if (isNewTextSource) {
@@ -29,18 +29,28 @@ class PlaybackManager {
 		} else {
 			this.elements.displayText.innerHTML = "Text changed. Click 'Speak Next Chunk' or 'Play All'.";
 		}
-		this.stopCurrentPlayback(true); // Stop everything, including pregeneration
-		this.audioCache = {};
-		// this.showStatus('Text changed. Playback reset.', 'info', 1500); // Maybe too noisy for every input
+		this.stopCurrentPlayback(true); // Stop pregeneration too
+		this.audioCache = {}; // Clear cache on any text change
+		// this.isTtsRecaptchaSessionVerified = false; // Optionally reset on major text change if desired, but session is server-side
 	}
 	
 	handleChunkSettingsChange() {
 		this.currentTextPosition = 0;
 		this.newTextLoadedForSinglePlay = true;
-		// displayText update is handled in UIManager for this specific message
 		this.stopCurrentPlayback(true);
 		this.audioCache = {};
 		this.showStatus('Chunk settings changed. Playback reset.', 'info', 1500);
+		this.elements.displayText.innerHTML = "Chunk settings changed. Click 'Speak Next Chunk' or 'Play All'.";
+	}
+	
+	handleTtsSettingsChange() {
+		this.currentTextPosition = 0;
+		this.newTextLoadedForSinglePlay = true;
+		this.stopCurrentPlayback(true); // Stop everything, including pregeneration
+		this.audioCache = {}; // Clear cache as voice/engine affects audio
+		// this.isTtsRecaptchaSessionVerified = false; // TTS settings change might invalidate previous audio, but session is server-side.
+		// Server will still respect session if valid.
+		// UIManager shows status and updates displayText for this
 	}
 	
 	_simpleHash(str) {
@@ -48,7 +58,7 @@ class PlaybackManager {
 		for (let i = 0; i < str.length; i++) {
 			const char = str.charCodeAt(i);
 			hash = (hash << 5) - hash + char;
-			hash |= 0; // Convert to 32bit integer
+			hash |= 0;
 		}
 		return 'h' + Math.abs(hash).toString(36) + str.length;
 	}
@@ -56,9 +66,8 @@ class PlaybackManager {
 	_extractChunkInternal(textToProcess, targetCount, unit) {
 		let chunkEndIndex = -1;
 		let itemsInChunk = 0;
-		
 		if (textToProcess.length === 0) {
-			return { text: "", length: 0 };
+			return {text: "", length: 0};
 		}
 		
 		if (unit === 'words') {
@@ -66,19 +75,18 @@ class PlaybackManager {
 			let lastWordEndIndex = -1;
 			for (let i = 0; i < textToProcess.length; i++) {
 				const char = textToProcess[i];
-				if (char.match(/\S/)) { // Non-whitespace character
+				if (char.match(/\S/)) { // Non-whitespace
 					if (!inWord) inWord = true;
 					lastWordEndIndex = i;
-				} else { // Whitespace character
+				} else { // Whitespace
 					if (inWord) {
 						itemsInChunk++;
 						inWord = false;
 					}
 				}
-				
-				// Break on major punctuation if target met or it's a strong break
-				if (char === '.' || char === ',' || char === '\n') {
-					if (inWord) { // Count word if punctuation ends it
+				// Break conditions for words
+				if (char === '.' || char === ',' || char === '\n') { // Natural breaks
+					if (inWord) { // Count word if ending on punctuation
 						itemsInChunk++;
 						inWord = false;
 					}
@@ -87,15 +95,13 @@ class PlaybackManager {
 						break;
 					}
 				}
-				
 				if (itemsInChunk >= targetCount && lastWordEndIndex !== -1) {
-					chunkEndIndex = lastWordEndIndex; // End of the last full word
+					chunkEndIndex = lastWordEndIndex;
 					break;
 				}
-				chunkEndIndex = i; // Fallback: extend to current char
+				chunkEndIndex = i; // Always advance chunkEndIndex to cover the whole string if no break condition met
 			}
 			if (inWord) itemsInChunk++; // Count last word if text ends mid-word
-			
 		} else if (unit === 'sentences') {
 			let lastValidSentenceEnd = -1;
 			for (let i = 0; i < textToProcess.length; i++) {
@@ -103,37 +109,30 @@ class PlaybackManager {
 				if (char === '.' || char === '!' || char === '?') {
 					const prevTwo = textToProcess.substring(Math.max(0, i - 2), i).toLowerCase();
 					const prevThree = textToProcess.substring(Math.max(0, i - 3), i).toLowerCase();
-					// Avoid splitting common abbreviations
 					if (!(char === '.' && (prevTwo === 'mr' || prevTwo === 'ms' || prevTwo === 'dr' || prevThree === 'mrs' || prevTwo === 'st' || prevTwo === 'co'))) {
 						const nextChar = textToProcess[i + 1];
-						// Ensure it's followed by space, newline, quote or is end of string
 						if (nextChar === undefined || nextChar.match(/\s|"|'|\u201C|\u201D/)) {
 							itemsInChunk++;
 							lastValidSentenceEnd = i;
 						}
 					}
 				} else if (char === '\n') {
-					// Treat double newline as a hard break if sentences already counted
-					if (i > 0 && textToProcess[i-1] === '\n' && itemsInChunk > 0) {
-						lastValidSentenceEnd = i; // include the double newline
+					if (i > 0 && textToProcess[i - 1] === '\n' && itemsInChunk > 0) {
+						lastValidSentenceEnd = i;
 						break;
 					}
 				}
-				
 				if (itemsInChunk >= targetCount && lastValidSentenceEnd !== -1) {
 					chunkEndIndex = lastValidSentenceEnd;
 					break;
 				}
-				// If no sentence break found yet, extend to current char (or last valid sentence end)
 				chunkEndIndex = (lastValidSentenceEnd !== -1 && itemsInChunk > 0) ? lastValidSentenceEnd : i;
 			}
-			// If target not met, but some sentences found, use that.
 			if (chunkEndIndex === -1 && lastValidSentenceEnd !== -1 && itemsInChunk > 0) {
 				chunkEndIndex = lastValidSentenceEnd;
 			}
-			// If no sentence enders found at all, take the whole text as one item if target is 1+
 			if (itemsInChunk === 0 && targetCount > 0 && textToProcess.trim().length > 0) {
-				itemsInChunk = 1; // Count it as one item
+				itemsInChunk = 1;
 				chunkEndIndex = textToProcess.length - 1;
 			}
 		}
@@ -141,18 +140,17 @@ class PlaybackManager {
 		if (chunkEndIndex === -1 && textToProcess.length > 0) {
 			chunkEndIndex = textToProcess.length - 1;
 		} else if (textToProcess.length === 0) {
-			return { text: "", length: 0 };
+			return {text: "", length: 0};
 		}
-		
 		const chunkText = textToProcess.substring(0, chunkEndIndex + 1);
-		return { text: chunkText, length: chunkText.length };
+		return {text: chunkText, length: chunkText.length};
 	}
 	
 	getNextChunk() {
 		const fullText = this.elements.mainTextarea.value;
 		if (this.currentTextPosition >= fullText.length && fullText.length > 0) {
 			this.showStatus('End of text reached.', 'info');
-			this.currentTextPosition = 0; // Reset for next play
+			this.currentTextPosition = 0; // Reset for next play from start
 			this.newTextLoadedForSinglePlay = true;
 			return null;
 		}
@@ -165,8 +163,8 @@ class PlaybackManager {
 		const unit = this.elements.chunkUnitSelect.value;
 		const remainingText = fullText.substring(this.currentTextPosition);
 		
-		if (remainingText.trim() === "") {
-			this.currentTextPosition = fullText.length;
+		if (remainingText.trim() === "") { // Only whitespace remaining
+			this.currentTextPosition = fullText.length; // Advance to end
 			this.showStatus('End of text reached (trailing whitespace).', 'info');
 			this.newTextLoadedForSinglePlay = true;
 			return null;
@@ -175,17 +173,15 @@ class PlaybackManager {
 		const chunkResult = this._extractChunkInternal(remainingText, countPerChunk, unit);
 		
 		if (chunkResult.text.trim() === "") {
-			// If only whitespace was extracted, advance past it and try again, unless it's the end
 			if (chunkResult.length > 0 && this.currentTextPosition + chunkResult.length < fullText.length) {
-				this.currentTextPosition += chunkResult.length;
-				return this.getNextChunk(); // Recursive call to find next non-empty chunk
+				this.currentTextPosition += chunkResult.length; // Skip whitespace
+				return this.getNextChunk(); // Try to get the next actual content
 			}
-			// If it's all whitespace till the end, or empty result for other reasons
 			this.currentTextPosition = fullText.length;
-			this.newTextLoadedForSinglePlay = true; // Mark as end reached
+			this.newTextLoadedForSinglePlay = true;
 			return null;
 		}
-		return { text: chunkResult.text, newPosition: this.currentTextPosition + chunkResult.length };
+		return {text: chunkResult.text, newPosition: this.currentTextPosition + chunkResult.length};
 	}
 	
 	playAudio(url, onEndedCallback, onPlayStartCallback) {
@@ -230,16 +226,17 @@ class PlaybackManager {
 		};
 	}
 	
-	stopCurrentPlayback(fromPregenerate = false) {
-		const wasPlayingOrPregenerating = this.isPlaying || this.playAllAbortController || (fromPregenerate && this.pregenerateAbortController);
+	stopCurrentPlayback(fromPregenerateOrSettingsChange = false) {
+		const wasPlayingOrPregenerating = this.isPlaying || this.playAllAbortController || (fromPregenerateOrSettingsChange && this.pregenerateAbortController);
+		if (!this.isPlaying && !this.playAllAbortController && !(fromPregenerateOrSettingsChange && this.pregenerateAbortController)) return;
 		
-		if (!this.isPlaying) return; // Nothing to stop
-		
-		this.elements.audioPlayer.pause();
+		if (this.elements.audioPlayer && !this.elements.audioPlayer.paused) {
+			this.elements.audioPlayer.pause();
+		}
 		this.elements.audioPlayer.currentTime = 0;
 		this.elements.audioPlayer.src = ""; // Release audio resource
-		
 		this.isPlaying = false;
+		
 		this.elements.speakNextBtn.disabled = false;
 		this.elements.playAllBtn.disabled = false;
 		this.elements.pregenerateAllBtn.disabled = false;
@@ -251,58 +248,89 @@ class PlaybackManager {
 			this.playAllAbortController.abort();
 			this.playAllAbortController = null;
 		}
-		if (fromPregenerate && this.pregenerateAbortController) {
+		if (fromPregenerateOrSettingsChange && this.pregenerateAbortController) {
 			this.pregenerateAbortController.abort();
 			this.pregenerateAbortController = null;
 			this.elements.pregenerateAllBtn.innerHTML = '<i class="fas fa-cogs"></i> Pregenerate All Audio';
 		}
-		this.cancelSpeakNextHold(); // Ensure any active hold is cancelled
-		
-		// if (wasPlayingOrPregenerating) this.showStatus('Playback/Pregeneration stopped.', 'info'); // Can be noisy
+		this.cancelSpeakNextHold();
+		if (wasPlayingOrPregenerating) {
+			this.showStatus('Playback/Pregeneration stopped.', 'info', 1500);
+		}
 	}
 	
 	async fetchAndCacheChunk(textChunk, signal) {
-		if (!textChunk || textChunk.trim() === "") return { success: false, message: "Empty chunk" };
+		if (!textChunk || textChunk.trim() === "") return {success: false, message: "Empty chunk"};
 		const trimmedTextChunk = textChunk.trim();
-		const chunkHash = this._simpleHash(trimmedTextChunk + this.elements.voiceSelect.value + this.elements.volumeInput.value);
+		const ttsEngine = this.elements.ttsEngineSelect.value;
+		const ttsVoice = this.elements.ttsVoiceSelect.value;
+		const ttsLanguageCode = (ttsEngine === 'google' && !this.elements.ttsLanguageCodeSelect.disabled) ? this.elements.ttsLanguageCodeSelect.value : 'n/a';
+		const volume = this.elements.volumeInput.value;
+		const chunkHash = this._simpleHash(trimmedTextChunk + ttsEngine + ttsVoice + ttsLanguageCode + volume);
 		
 		if (this.audioCache[chunkHash]) {
-			return { success: true, cached: true, url: this.audioCache[chunkHash] };
+			return {success: true, cached: true, url: this.audioCache[chunkHash]};
 		}
 		
-		this.showStatus(`Requesting TTS for: "${trimmedTextChunk.substring(0, 30)}..."`, 'info', null); // Keep null for ongoing
+		this.showStatus(`Requesting TTS for: "${trimmedTextChunk.substring(0, 30)}..."`, 'info', null);
+		
 		try {
-			const recaptchaToken = await getRecaptchaToken('text_to_speech'); // Specific action name
+			let recaptchaToken = null;
+			
+			if (!this.isTtsRecaptchaSessionVerified) {
+				recaptchaToken = await this.requestRecaptchaV2Verification('text_to_speech');
+			} else {
+				this.showStatus('TTS reCAPTCHA previously verified for this session.', 'info', 2000);
+			}
 			
 			const formData = new FormData();
 			formData.append('action', 'text_to_speech_chunk');
 			formData.append('text_chunk', trimmedTextChunk);
-			formData.append('voice', this.elements.voiceSelect.value);
-			formData.append('volume', this.elements.volumeInput.value);
-			formData.append('g-recaptcha-response', recaptchaToken);
+			formData.append('tts_engine', ttsEngine);
+			formData.append('voice', ttsVoice);
+			formData.append('language_code', ttsLanguageCode);
+			formData.append('volume', volume);
 			
-			const fetchOptions = { method: 'POST', body: formData };
+			if (recaptchaToken) { // Only append if session was not verified and we got a token
+				formData.append('g-recaptcha-response', recaptchaToken);
+			}
+			// If recaptchaToken is null, server relies on PHP session status
+			
+			const fetchOptions = {method: 'POST', body: formData};
 			if (signal) fetchOptions.signal = signal;
 			
 			const response = await fetch(window.location.href, fetchOptions);
 			if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
 			
 			const result = await response.json();
+			
 			if (result.success && result.fileUrl) {
 				this.audioCache[chunkHash] = result.fileUrl;
-				// this.showStatus(`TTS generated for: "${trimmedTextChunk.substring(0,20)}..."`, 'success', 1500); // Caller shows status
-				return { success: true, cached: false, url: result.fileUrl };
+				if (result.recaptcha_session_verified) { // Check flag from server
+					this.isTtsRecaptchaSessionVerified = true;
+				}
+				return {success: true, cached: false, url: result.fileUrl};
 			} else {
-				throw new Error(result.message || 'TTS generation failed');
+				// If server indicates reCAPTCHA is now required again (e.g. session expired)
+				if (!result.success && result.message &&
+					(result.message.toLowerCase().includes('recaptcha') || result.message.toLowerCase().includes('verification') || result.message.toLowerCase().includes('human verification'))) {
+					this.isTtsRecaptchaSessionVerified = false; // Reset client flag
+					this.showStatus('Re-verification may be needed. ' + result.message, 'warning');
+				}
+				throw new Error(result.message || 'TTS generation failed on server');
 			}
 		} catch (error) {
 			if (error.name === 'AbortError') {
 				this.showStatus('TTS request aborted.', 'info');
 			} else {
 				console.error("TTS request error:", error);
+				// If error message indicates reCAPTCHA failure, reset client flag
+				if (error.message && (error.message.toLowerCase().includes('recaptcha') || error.message.toLowerCase().includes('verification') || error.message.toLowerCase().includes('human verification'))) {
+					this.isTtsRecaptchaSessionVerified = false;
+				}
 				this.showStatus('TTS Request Error: ' + error.message, 'danger');
 			}
-			throw error; // Re-throw for the caller to handle
+			throw error; // Re-throw to be caught by caller
 		}
 	}
 	
@@ -317,7 +345,7 @@ class PlaybackManager {
 		this.elements.pregenerateAllBtn.disabled = true;
 		
 		try {
-			const { success, cached, url } = await this.fetchAndCacheChunk(trimmedTextChunk, signal);
+			const {success, cached, url} = await this.fetchAndCacheChunk(trimmedTextChunk, signal);
 			if (success) {
 				if (cached) {
 					this.showStatus(`Playing cached audio for: "${trimmedTextChunk.substring(0, 30)}..."`, 'info', 1500);
@@ -326,15 +354,14 @@ class PlaybackManager {
 				}
 				this.playAudio(url, onEndedCallback, onPlayStartCallback);
 			} else {
-				// Error already shown by fetchAndCacheChunk or caught below
 				if (onEndedCallback) onEndedCallback(new Error('Failed to fetch or cache audio'));
 				this.elements.speakNextBtn.disabled = false;
 				this.elements.playAllBtn.disabled = false;
 				this.elements.pregenerateAllBtn.disabled = false;
 			}
 		} catch (error) {
-			if (error.name !== 'AbortError') {
-				this.showStatus('TTS Error: ' + error.message, 'danger');
+			if (error.name !== 'AbortError' && !(error.message && error.message.toLowerCase().includes('recaptcha'))) {
+				this.showStatus('Playback Error: ' + error.message, 'danger');
 			}
 			if (onEndedCallback) onEndedCallback(error);
 			this.elements.speakNextBtn.disabled = false;
@@ -345,13 +372,11 @@ class PlaybackManager {
 	
 	executeSpeakNextAction() {
 		if (this.isPlaying) return;
-		this.stopCurrentPlayback(); // Stop any previous single play, but not pregen
-		
+		this.stopCurrentPlayback();
 		const chunkData = this.getNextChunk();
 		if (chunkData && chunkData.text.trim() !== "") {
 			this.currentTextPosition = chunkData.newPosition;
 			const chunkId = 'chunk-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
-			
 			this.getAndPlayAudio(
 				chunkData.text.trim(),
 				() => { // onEndedCallback
@@ -360,29 +385,37 @@ class PlaybackManager {
 				},
 				() => { // onPlayStartCallback
 					if (this.newTextLoadedForSinglePlay) {
-						this.elements.displayText.innerHTML = ''; // Clear if new text or reset
+						this.elements.displayText.innerHTML = '';
 						this.newTextLoadedForSinglePlay = false;
 					}
 					const newChunkHtml = `<span id="${chunkId}">${chunkData.text.replace(/\n/g, '<br>')}</span>`;
 					this.elements.displayText.insertAdjacentHTML('beforeend', newChunkHtml);
 					
-					// Scroll #displayText itself to its bottom (useful if it has its own scrollbar)
-					//this.elements.displayText.scrollTop = this.elements.displayText.scrollHeight;
-					
-					window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-					
-					document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
 					const currentChunkSpan = document.getElementById(chunkId);
-					if (currentChunkSpan) currentChunkSpan.classList.add('highlight');
+					if (currentChunkSpan) {
+						document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
+						currentChunkSpan.classList.add('highlight');
+						currentChunkSpan.scrollIntoView({behavior: 'smooth', block: 'center'});
+						setTimeout(() => {
+							if (!currentChunkSpan || (this.playAllAbortController && this.playAllAbortController.signal.aborted)) return;
+							const rect = currentChunkSpan.getBoundingClientRect();
+							const viewportHeight = window.innerHeight;
+							const playbackControlsHeight = this.elements.playbackControlsContainer.offsetHeight || 80;
+							const desiredBottomMargin = playbackControlsHeight + 20;
+							if (rect.bottom > viewportHeight - desiredBottomMargin) {
+								const scrollAmount = rect.bottom - (viewportHeight - desiredBottomMargin);
+								window.scrollBy({top: scrollAmount, behavior: 'smooth'});
+							}
+						}, 100);
+					}
 				}
 			);
 		} else {
-			// Handle cases where no chunk is returned (end of text, empty textarea)
 			if (this.elements.mainTextarea.value.trim().length > 0 && this.currentTextPosition === 0 && this.newTextLoadedForSinglePlay) {
 				this.elements.displayText.innerHTML = "End of text. Click 'Speak Next Chunk' to restart or load new text.";
 			} else if (this.elements.mainTextarea.value.trim().length === 0) {
 				this.elements.displayText.innerHTML = "Textarea is empty. Please enter or generate text.";
-			} else if (!chunkData || (chunkData && chunkData.text.trim() === "")) { // End of text or empty chunk
+			} else if (!chunkData || (chunkData && chunkData.text.trim() === "")) {
 				this.elements.displayText.innerHTML = "End of text. Load new text or click 'Speak Next Chunk' to restart.";
 			}
 		}
@@ -394,13 +427,15 @@ class PlaybackManager {
 		const elapsed = Date.now() - this.holdStartTime;
 		const progress = Math.min(100, (elapsed / holdDuration) * 100);
 		
-		this.elements.holdSpinner.style.background = `conic-gradient(dodgerblue ${progress * 3.6}deg, #444 ${progress * 3.6}deg)`;
+		const theme = document.documentElement.getAttribute('data-bs-theme');
+		const unfilledColor = theme === 'dark' ? '#6c757d' : '#444';
+		this.elements.holdSpinner.style.background = `conic-gradient(dodgerblue ${progress * 3.6}deg, ${unfilledColor} ${progress * 3.6}deg)`;
 		this.elements.holdSpinnerProgressText.textContent = `${Math.round(progress)}%`;
 		
 		if (progress >= 100) {
-			this.cancelSpeakNextHold(false); // Don't reset isHoldingSpeakNext yet
+			this.cancelSpeakNextHold(false);
 			this.executeSpeakNextAction();
-			this.isHoldingSpeakNext = false; // Now reset
+			this.isHoldingSpeakNext = false;
 		} else {
 			this.holdAnimationId = requestAnimationFrame(() => this.updateHoldSpinner());
 		}
@@ -410,7 +445,9 @@ class PlaybackManager {
 		if (this.holdAnimationId) cancelAnimationFrame(this.holdAnimationId);
 		this.holdAnimationId = null;
 		this.elements.holdSpinnerOverlay.style.display = 'none';
-		this.elements.holdSpinner.style.background = 'conic-gradient(dodgerblue 0deg, #444 0deg)';
+		const theme = document.documentElement.getAttribute('data-bs-theme');
+		const unfilledColor = theme === 'dark' ? '#6c757d' : '#444';
+		this.elements.holdSpinner.style.background = `conic-gradient(dodgerblue 0deg, ${unfilledColor} 0deg)`;
 		this.elements.holdSpinnerProgressText.textContent = '0%';
 		if (resetIsHolding) this.isHoldingSpeakNext = false;
 	}
@@ -423,37 +460,34 @@ class PlaybackManager {
 	
 	async playAllChunks() {
 		if (this.isPlaying) return;
-		this.stopCurrentPlayback(true); // Stop everything including pregen
+		this.stopCurrentPlayback(true);
 		this.playAllAbortController = new AbortController();
 		const signal = this.playAllAbortController.signal;
-		
 		const fullText = this.elements.mainTextarea.value;
+		
 		if (!fullText.trim()) {
 			this.showStatus('Textarea is empty.', 'warning');
 			this.playAllAbortController = null;
 			return;
 		}
 		
-		this.elements.displayText.innerHTML = ''; // Clear display area
+		this.elements.displayText.innerHTML = '';
 		let tempPosition = 0;
 		const chunksToPlay = [];
 		let highlightedTextHtml = "";
 		let displayChunkIndex = 0;
-		
 		const countPerChunk = parseInt(this.elements.wordsPerChunkInput.value) || (this.elements.chunkUnitSelect.value === 'words' ? 10 : 1);
 		const unit = this.elements.chunkUnitSelect.value;
 		
-		// Pre-calculate all chunks and build the display HTML
 		while (tempPosition < fullText.length) {
 			const remainingTextForPlayAll = fullText.substring(tempPosition);
-			if (remainingTextForPlayAll.trim() === "" && tempPosition < fullText.length) { // Only whitespace left
-				highlightedTextHtml += remainingTextForPlayAll.replace(/\n/g, '<br>'); // Add remaining whitespace
+			if (remainingTextForPlayAll.trim() === "" && tempPosition < fullText.length) {
+				highlightedTextHtml += remainingTextForPlayAll.replace(/\n/g, '<br>');
 				break;
 			}
 			if (remainingTextForPlayAll === "") break;
 			
 			const chunkResultPlayAll = this._extractChunkInternal(remainingTextForPlayAll, countPerChunk, unit);
-			
 			if (chunkResultPlayAll.length === 0 && remainingTextForPlayAll.length > 0) {
 				console.warn("PlayAll: _extractChunkInternal returned empty for non-empty input. Appending rest.");
 				highlightedTextHtml += remainingTextForPlayAll.substring(0).replace(/\n/g, '<br>');
@@ -465,9 +499,8 @@ class PlaybackManager {
 			let originalChunkText = chunkResultPlayAll.text;
 			const chunkId = `playall-chunk-${displayChunkIndex}`;
 			highlightedTextHtml += `<span id="${chunkId}">${originalChunkText.replace(/\n/g, '<br>')}</span>`;
-			
 			if (originalChunkText.trim() !== "") {
-				chunksToPlay.push({ text: originalChunkText.trim(), originalChunk: originalChunkText, id: chunkId });
+				chunksToPlay.push({text: originalChunkText.trim(), originalChunk: originalChunkText, id: chunkId});
 			}
 			tempPosition += chunkResultPlayAll.length;
 			displayChunkIndex++;
@@ -485,13 +518,13 @@ class PlaybackManager {
 			return;
 		}
 		
-		this.isPlaying = true; // Set before loop
+		this.isPlaying = true;
 		this.elements.speakNextBtn.disabled = true;
 		this.elements.playAllBtn.disabled = true;
 		this.elements.pregenerateAllBtn.disabled = true;
 		this.elements.stopPlaybackBtn.disabled = false;
 		
-		let currentOverallTextPosition = 0; // For main currentTextPosition update
+		let currentOverallTextPosition = 0;
 		
 		for (let i = 0; i < chunksToPlay.length; i++) {
 			if (signal.aborted) {
@@ -500,19 +533,14 @@ class PlaybackManager {
 			}
 			const currentChunkData = chunksToPlay[i];
 			
-			// Update currentOverallTextPosition based on the original chunk's position in fullText
-			// This is a bit tricky if chunks are modified (e.g. trimmed). We use originalChunk for length.
 			let chunkStartIndexInFullText = fullText.indexOf(currentChunkData.originalChunk, currentOverallTextPosition);
-			if (chunkStartIndexInFullText === -1 && i === 0) chunkStartIndexInFullText = 0; // First chunk might not match if text starts with whitespace
-			
+			if (chunkStartIndexInFullText === -1 && i === 0) chunkStartIndexInFullText = 0;
 			if (chunkStartIndexInFullText !== -1) {
 				currentOverallTextPosition = chunkStartIndexInFullText + currentChunkData.originalChunk.length;
 			} else {
-				// Fallback if indexOf fails (e.g. due to normalization or very similar chunks)
-				// This might lead to slight inaccuracies if not careful, but originalChunk.length is key
 				currentOverallTextPosition += currentChunkData.originalChunk.length;
 			}
-			
+			this.currentTextPosition = currentOverallTextPosition;
 			
 			try {
 				await new Promise((resolve, reject) => {
@@ -525,38 +553,33 @@ class PlaybackManager {
 						(err) => { // onEndedCallback
 							const playedChunkSpan = document.getElementById(currentChunkData.id);
 							if (playedChunkSpan) playedChunkSpan.classList.remove('highlight');
-							if (err) reject(err); else resolve();
+							if (err) reject(err);
+							else resolve();
 						},
 						() => { // onPlayStartCallback
 							document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
 							const currentChunkSpanInDOM = document.getElementById(currentChunkData.id);
 							if (currentChunkSpanInDOM) {
 								currentChunkSpanInDOM.classList.add('highlight');
-								currentChunkSpanInDOM.scrollIntoView({ behavior: 'smooth', block: 'center' });
-								
+								currentChunkSpanInDOM.scrollIntoView({behavior: 'smooth', block: 'center'});
 								setTimeout(() => {
-									if (!currentChunkSpanInDOM || signal.aborted) return; // Check element and abort signal
-									
+									if (!currentChunkSpanInDOM || signal.aborted) return;
 									const rect = currentChunkSpanInDOM.getBoundingClientRect();
 									const viewportHeight = window.innerHeight;
-									
-									// Approx height of fixed playback controls + desired margin above them
 									const playbackControlsHeight = this.elements.playbackControlsContainer.offsetHeight || 80;
-									const desiredBottomMargin = playbackControlsHeight + 20; // 20px extra space
-									
+									const desiredBottomMargin = playbackControlsHeight + 20;
 									if (rect.bottom > viewportHeight - desiredBottomMargin) {
 										const scrollAmount = rect.bottom - (viewportHeight - desiredBottomMargin);
-										window.scrollBy({ top: scrollAmount, behavior: 'smooth' });
+										window.scrollBy({top: scrollAmount, behavior: 'smooth'});
 									}
 								}, 100);
 							}
 						},
-						signal // Pass signal to getAndPlayAudio
+						signal
 					);
-					// Ensure promise rejects if signal aborts during TTS fetch/before playAudio
 					signal.addEventListener('abort', () => {
 						reject(new DOMException('Aborted', 'AbortError'));
-					}, { once: true });
+					}, {once: true});
 				});
 			} catch (error) {
 				if (error.name === 'AbortError') {
@@ -565,7 +588,7 @@ class PlaybackManager {
 					this.showStatus(`Error playing chunk ${i + 1}: ${error.message}`, 'danger');
 					console.error(`Error playing chunk ${i + 1}:`, error);
 				}
-				break; // Stop playing further chunks on error
+				break;
 			}
 		}
 		
@@ -577,19 +600,15 @@ class PlaybackManager {
 		
 		if (!signal.aborted && chunksToPlay.length > 0) {
 			this.showStatus('Finished playing all chunks.', 'success');
-			this.currentTextPosition = fullText.length; // Mark as fully played
+			this.currentTextPosition = fullText.length;
 		} else if (chunksToPlay.length === 0 && !signal.aborted) {
 			// Message already shown
 		}
-		
 		if (signal.aborted) {
 			document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
-			// Set currentTextPosition to where it stopped
-			this.currentTextPosition = Math.min(currentOverallTextPosition, fullText.length);
 		}
-		
 		this.playAllAbortController = null;
-		this.newTextLoadedForSinglePlay = true; // Ready for single play to clear display
+		this.newTextLoadedForSinglePlay = true;
 	}
 	
 	async pregenerateAllAudioHandler() {
@@ -597,8 +616,7 @@ class PlaybackManager {
 			this.showStatus('Cannot pregenerate while another operation is active.', 'warning');
 			return;
 		}
-		this.stopCurrentPlayback(); // Stop any existing playback/hold
-		
+		this.stopCurrentPlayback();
 		this.pregenerateAbortController = new AbortController();
 		const signal = this.pregenerateAbortController.signal;
 		const fullText = this.elements.mainTextarea.value;
@@ -620,7 +638,6 @@ class PlaybackManager {
 		const countPerChunk = parseInt(this.elements.wordsPerChunkInput.value) || (this.elements.chunkUnitSelect.value === 'words' ? 10 : 1);
 		const unit = this.elements.chunkUnitSelect.value;
 		
-		// First, gather all chunks
 		while (tempPosition < fullText.length) {
 			const remainingText = fullText.substring(tempPosition);
 			if (remainingText.trim() === "") break;
@@ -653,7 +670,12 @@ class PlaybackManager {
 				break;
 			}
 			const chunkText = chunksToFetch[i];
-			const chunkHash = this._simpleHash(chunkText + this.elements.voiceSelect.value + this.elements.volumeInput.value);
+			
+			const ttsEngine = this.elements.ttsEngineSelect.value;
+			const ttsVoice = this.elements.ttsVoiceSelect.value;
+			const ttsLanguageCode = (ttsEngine === 'google' && !this.elements.ttsLanguageCodeSelect.disabled) ? this.elements.ttsLanguageCodeSelect.value : 'n/a';
+			const volume = this.elements.volumeInput.value;
+			const chunkHash = this._simpleHash(chunkText + ttsEngine + ttsVoice + ttsLanguageCode + volume);
 			
 			if (this.audioCache[chunkHash]) {
 				successCount++;
@@ -661,16 +683,13 @@ class PlaybackManager {
 				continue;
 			}
 			
-			this.showStatus(`Pregenerating chunk ${i + 1}/${chunksToFetch.length}: "${chunkText.substring(0,20)}..."`, 'info', null);
+			this.showStatus(`Pregenerating chunk ${i + 1}/${chunksToFetch.length}: "${chunkText.substring(0, 20)}..."`, 'info', null);
 			try {
-				await this.fetchAndCacheChunk(chunkText, signal);
+				await this.fetchAndCacheChunk(chunkText, signal); // Signal is passed here
 				successCount++;
-				// fetchAndCacheChunk shows its own status on success/failure, but we might want a summary here
-				// this.showStatus(`Chunk ${i + 1}/${chunksToFetch.length} cached.`, 'success', 1500);
 			} catch (error) {
 				failCount++;
 				if (error.name === 'AbortError') break;
-				this.showStatus(`Failed to pregenerate chunk ${i + 1}: ${error.message}`, 'danger');
 			}
 		}
 		
@@ -690,17 +709,14 @@ class PlaybackManager {
 		this.pregenerateAbortController = null;
 	}
 	
-	
 	_bindPlaybackButtonListeners() {
-		// Speak Next (Hold-to-activate)
 		this.elements.speakNextBtn.addEventListener('mousedown', (e) => {
 			if (e.button !== 0 || this.isPlaying || this.isHoldingSpeakNext) return;
 			this.isHoldingSpeakNext = true;
 			this.holdStartTime = Date.now();
 			const holdDuration = parseInt(this.elements.speakNextHoldDurationInput.value) || 0;
-			
 			if (holdDuration === 0) {
-				this.isHoldingSpeakNext = false; // Not really holding
+				this.isHoldingSpeakNext = false;
 				this.executeSpeakNextAction();
 				return;
 			}
@@ -710,11 +726,10 @@ class PlaybackManager {
 		
 		this.elements.speakNextBtn.addEventListener('touchstart', (e) => {
 			if (this.isPlaying || this.isHoldingSpeakNext) return;
-			e.preventDefault(); // Prevent mouse events and scrolling
+			e.preventDefault();
 			this.isHoldingSpeakNext = true;
 			this.holdStartTime = Date.now();
 			const holdDuration = parseInt(this.elements.speakNextHoldDurationInput.value) || 0;
-			
 			if (holdDuration === 0) {
 				this.isHoldingSpeakNext = false;
 				this.executeSpeakNextAction();
@@ -722,22 +737,14 @@ class PlaybackManager {
 			}
 			this.elements.holdSpinnerOverlay.style.display = 'flex';
 			this.updateHoldSpinner();
-		}, { passive: false });
+		}, {passive: false});
 		
-		// Release handlers for Speak Next
 		document.addEventListener('mouseup', () => this._releaseSpeakNextHandler());
 		document.addEventListener('touchend', () => this._releaseSpeakNextHandler());
 		document.addEventListener('touchcancel', () => this._releaseSpeakNextHandler());
-		this.elements.speakNextBtn.addEventListener('mouseleave', (event) => {
-			// Only cancel if mouse button is UP when leaving
-			if (this.isHoldingSpeakNext && !(event.buttons & 1)) {
-				this.cancelSpeakNextHold();
-			}
-		});
 		
-		// Other playback buttons
 		this.elements.playAllBtn.addEventListener('click', () => this.playAllChunks());
-		this.elements.stopPlaybackBtn.addEventListener('click', () => this.stopCurrentPlayback(true)); // true to stop pregen too
+		this.elements.stopPlaybackBtn.addEventListener('click', () => this.stopCurrentPlayback(true));
 		this.elements.pregenerateAllBtn.addEventListener('click', () => this.pregenerateAllAudioHandler());
 	}
 }
