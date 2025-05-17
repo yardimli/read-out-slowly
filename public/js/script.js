@@ -7,33 +7,28 @@ document.addEventListener('DOMContentLoaded', () => {
 		useAiTextBtn: document.getElementById('useAiTextBtn'),
 		saveToStorageBtn: document.getElementById('saveToStorageBtn'),
 		savedTextsList: document.getElementById('savedTextsList'),
+		
+		// Settings elements still managed by UIManager on index.php
 		wordsPerChunkInput: document.getElementById('wordsPerChunkInput'),
 		volumeInput: document.getElementById('volumeInput'),
-		displayText: document.getElementById('displayText'),
-		displayTextCard: document.getElementById('displayTextCard'),
 		displayTextFontSizeInput: document.getElementById('displayTextFontSizeInput'),
-		speakNextBtn: document.getElementById('speakNextBtn'),
-		playAllBtn: document.getElementById('playAllBtn'),
-		stopPlaybackBtn: document.getElementById('stopPlaybackBtn'),
-		audioPlayer: document.getElementById('audioPlayer'),
 		statusMessage: document.getElementById('statusMessage'),
 		settingsCard: document.getElementById('settingsCard'),
 		statusVerbositySelect: document.getElementById('statusVerbositySelect'),
 		speakNextHoldDurationInput: document.getElementById('speakNextHoldDuration'),
 		togglePlayAllBtnSwitch: document.getElementById('togglePlayAllBtnSwitch'),
-		holdSpinnerOverlay: document.getElementById('holdSpinnerOverlay'),
-		holdSpinner: document.getElementById('holdSpinner'),
-		holdSpinnerProgressText: document.getElementById('holdSpinnerProgressText'),
-		h3Title: document.querySelector('h3'),
+		
+		h3Title: document.querySelector('h3'), // For dark mode toggle interaction
 		mainControlsContainer: document.getElementById('mainControlsContainer'),
-		playbackControlsContainer: document.getElementById('playbackControlsContainer'),
 		mainTextareaLabel: document.querySelector('label[for="mainTextarea"]'),
 		chunkUnitSelect: document.getElementById('chunkUnitSelect'),
-		wordsPerChunkLabel: document.querySelector('label[for="wordsPerChunkInput"]'),
-		pregenerateAllBtn: document.getElementById('pregenerateAllBtn'),
+		wordsPerChunkLabel: document.getElementById('wordsPerChunkLabel'), // Updated to get by ID
+		
 		aiGenerateModal: document.getElementById('aiGenerateModal'),
 		localStorageLoadModal: document.getElementById('localStorageLoadModal'),
-		// New TTS Elements
+		
+		pregenerateAllBtn: document.getElementById('pregenerateAllBtn'),
+		
 		ttsEngineSelect: document.getElementById('ttsEngineSelect'),
 		ttsVoiceSelect: document.getElementById('ttsVoiceSelect'),
 		ttsLanguageCodeSelect: document.getElementById('ttsLanguageCodeSelect'),
@@ -41,21 +36,40 @@ document.addEventListener('DOMContentLoaded', () => {
 		
 		unreadTextOpacityInput: document.getElementById('unreadTextOpacityInput'),
 		unreadTextOpacityValue: document.getElementById('unreadTextOpacityValue'),
-		
 		floatingPlayButtonSwitch: document.getElementById('floatingPlayButtonSwitch'),
-		floatingPlayButton: document.getElementById('floatingPlayButton'),
 		
+		// New button for navigating to read.php
+		readTextBtn: document.getElementById('readTextBtn'),
+		mainControlsHint: document.getElementById('mainControlsHint'), // For dark mode toggle interaction
 	};
 	
 	const uiManagerInstance = new UIManager(DOMElements);
-	
-	const playbackManagerInstance = new PlaybackManager(
-		DOMElements,
-		uiManagerInstance.showStatus.bind(uiManagerInstance));
-	
-	uiManagerInstance.setPlaybackManager(playbackManagerInstance);
-	
 	uiManagerInstance.init();
-	playbackManagerInstance.init();
 	
+	// Add listener for the new "Read This Text" button
+	if (DOMElements.readTextBtn) {
+		DOMElements.readTextBtn.addEventListener('click', () => {
+			const textToRead = DOMElements.mainTextarea.value;
+			if (textToRead.trim() === "") {
+				uiManagerInstance.showStatus("Textarea is empty. Nothing to read.", "warning");
+				return;
+			}
+			localStorage.setItem('textToReadOutSlowly', textToRead);
+			
+			// Try to get a title for the read page
+			let textTitle = "Reading Text";
+			const savedTexts = JSON.parse(localStorage.getItem('readOutSlowlyTexts')) || [];
+			const matchingSavedText = savedTexts.find(t => t.text === textToRead);
+			if (matchingSavedText) {
+				textTitle = matchingSavedText.name;
+			} else {
+				textTitle = textToRead.substring(0, 50).replace(/\n/g, ' ') + (textToRead.length > 50 ? "..." : "");
+			}
+			localStorage.setItem('textToReadOutSlowlyTitle', textTitle);
+			
+			// UIManager saves all other settings to localStorage on change,
+			// so they should be up-to-date for read-page-script.js to pick up.
+			window.open('read.php', '_blank'); // Open in a new tab
+		});
+	}
 });

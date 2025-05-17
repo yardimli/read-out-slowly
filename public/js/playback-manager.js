@@ -6,7 +6,6 @@ class PlaybackManager {
 		this.audioCache = {};
 		this.isPlaying = false;
 		this.playAllAbortController = null;
-		this.pregenerateAbortController = null;
 		this.holdStartTime = 0;
 		this.holdAnimationId = null;
 		this.isHoldingSpeakNext = false;
@@ -97,7 +96,7 @@ class PlaybackManager {
 			this.displayFullTextWithOpacity();
 		}
 		
-		this.stopCurrentPlayback(true); // Stop pregeneration too
+		this.stopCurrentPlayback();
 		this.audioCache = {}; // Clear cache on any text change
 	}
 	
@@ -147,7 +146,7 @@ class PlaybackManager {
 	
 	handleChunkSettingsChange() {
 		this.currentTextPosition = 0;
-		this.stopCurrentPlayback(true);
+		this.stopCurrentPlayback();
 		this.audioCache = {};
 		this.showStatus('Chunk settings changed. Playback reset.', 'info', 1500);
 		this.elements.displayText.innerHTML = "Chunk settings changed. Click 'Speak Next Chunk' or 'Play All'.";
@@ -155,7 +154,7 @@ class PlaybackManager {
 	
 	handleTtsSettingsChange() {
 		this.currentTextPosition = 0;
-		this.stopCurrentPlayback(true); // Stop everything, including pregeneration
+		this.stopCurrentPlayback();
 		this.audioCache = {}; // Clear cache as voice/engine affects audio
 	}
 	
@@ -297,7 +296,6 @@ class PlaybackManager {
 					this.floatingPlayButtonElement.style.display = 'none';
 				}
 				this.elements.playAllBtn.disabled = true;
-				this.elements.pregenerateAllBtn.disabled = true;
 				this.elements.stopPlaybackBtn.disabled = false;
 				if (onPlayStartCallback) onPlayStartCallback();
 			})
@@ -310,7 +308,6 @@ class PlaybackManager {
 					this.floatingPlayButtonElement.style.display = 'block';
 				}
 				this.elements.playAllBtn.disabled = false;
-				this.elements.pregenerateAllBtn.disabled = false;
 				this.elements.stopPlaybackBtn.disabled = true;
 				if (onEndedCallback) onEndedCallback(error);
 			});
@@ -322,7 +319,6 @@ class PlaybackManager {
 				this.floatingPlayButtonElement.style.display = 'block';
 			}
 			this.elements.playAllBtn.disabled = false;
-			this.elements.pregenerateAllBtn.disabled = false;
 			this.elements.stopPlaybackBtn.disabled = true;
 			
 			if (onEndedCallback) onEndedCallback();
@@ -336,15 +332,13 @@ class PlaybackManager {
 				this.floatingPlayButtonElement.style.display = 'block';
 			}
 			this.elements.playAllBtn.disabled = false;
-			this.elements.pregenerateAllBtn.disabled = false;
 			this.elements.stopPlaybackBtn.disabled = true;
 			if (onEndedCallback) onEndedCallback(e);
 		};
 	}
 	
-	stopCurrentPlayback(fromPregenerateOrSettingsChange = false) {
-		const wasPlayingOrPregenerating = this.isPlaying || this.playAllAbortController || (fromPregenerateOrSettingsChange && this.pregenerateAbortController);
-		if (!this.isPlaying && !this.playAllAbortController && !(fromPregenerateOrSettingsChange && this.pregenerateAbortController)) return;
+	stopCurrentPlayback() {
+		if (!this.isPlaying && !this.playAllAbortController) return;
 		
 		// Stop browser speech synthesis if it's being used
 		if (window.speechSynthesis) {
@@ -364,7 +358,6 @@ class PlaybackManager {
 			this.floatingPlayButtonElement.style.display = 'block';
 		}
 		this.elements.playAllBtn.disabled = false;
-		this.elements.pregenerateAllBtn.disabled = false;
 		this.elements.stopPlaybackBtn.disabled = true;
 		
 		document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
@@ -373,17 +366,8 @@ class PlaybackManager {
 			this.playAllAbortController.abort();
 			this.playAllAbortController = null;
 		}
-		
-		if (fromPregenerateOrSettingsChange && this.pregenerateAbortController) {
-			this.pregenerateAbortController.abort();
-			this.pregenerateAbortController = null;
-			this.elements.pregenerateAllBtn.innerHTML = '<i class="fas fa-cogs"></i> Pregenerate All Audio';
-		}
-		
+
 		this.cancelSpeakNextHold();
-		if (wasPlayingOrPregenerating) {
-			this.showStatus('Playback/Pregeneration stopped.', 'info', 1500);
-		}
 		
 		if (this.floatingPlayButtonElement) {
 			this.floatingPlayButtonElement.style.display = 'none';
@@ -464,7 +448,6 @@ class PlaybackManager {
 			this.floatingPlayButtonElement.style.display = 'none';
 		}
 		this.elements.playAllBtn.disabled = true;
-		this.elements.pregenerateAllBtn.disabled = true;
 		
 		try {
 			// Check if using browser TTS
@@ -498,7 +481,6 @@ class PlaybackManager {
 					this.floatingPlayButtonElement.style.display = 'block';
 				}
 				this.elements.playAllBtn.disabled = false;
-				this.elements.pregenerateAllBtn.disabled = false;
 				this.elements.stopPlaybackBtn.disabled = true;
 				
 				if (onEndedCallback) onEndedCallback();
@@ -519,7 +501,6 @@ class PlaybackManager {
 						this.floatingPlayButtonElement.style.display = 'block';
 					}
 					this.elements.playAllBtn.disabled = false;
-					this.elements.pregenerateAllBtn.disabled = false;
 				}
 			}
 		} catch (error) {
@@ -532,7 +513,6 @@ class PlaybackManager {
 				this.floatingPlayButtonElement.style.display = 'block';
 			}
 			this.elements.playAllBtn.disabled = false;
-			this.elements.pregenerateAllBtn.disabled = false;
 		}
 	}
 	
@@ -662,7 +642,7 @@ class PlaybackManager {
 	
 	async playAllChunks() {
 		if (this.isPlaying) return;
-		this.stopCurrentPlayback(true);
+		this.stopCurrentPlayback();
 		this.playAllAbortController = new AbortController();
 		const signal = this.playAllAbortController.signal;
 		const fullText = this.elements.mainTextarea.value;
@@ -717,7 +697,6 @@ class PlaybackManager {
 				this.floatingPlayButtonElement.style.display = 'block';
 			}
 			this.elements.playAllBtn.disabled = false;
-			this.elements.pregenerateAllBtn.disabled = false;
 			this.elements.stopPlaybackBtn.disabled = true;
 			this.playAllAbortController = null;
 			return;
@@ -729,7 +708,6 @@ class PlaybackManager {
 			this.floatingPlayButtonElement.style.display = 'none';
 		}
 		this.elements.playAllBtn.disabled = true;
-		this.elements.pregenerateAllBtn.disabled = true;
 		this.elements.stopPlaybackBtn.disabled = false;
 		
 		let currentOverallTextPosition = 0;
@@ -823,7 +801,6 @@ class PlaybackManager {
 			this.floatingPlayButtonElement.style.display = 'block';
 		}
 		this.elements.playAllBtn.disabled = false;
-		this.elements.pregenerateAllBtn.disabled = false;
 		this.elements.stopPlaybackBtn.disabled = true;
 		
 		if (!signal.aborted && chunksToPlay.length > 0) {
@@ -873,6 +850,6 @@ class PlaybackManager {
 		document.addEventListener('touchcancel', () => this._releaseSpeakNextHandler());
 		
 		this.elements.playAllBtn.addEventListener('click', () => this.playAllChunks());
-		this.elements.stopPlaybackBtn.addEventListener('click', () => this.stopCurrentPlayback(true));
+		this.elements.stopPlaybackBtn.addEventListener('click', () => this.stopCurrentPlayback());
 	}
 }
