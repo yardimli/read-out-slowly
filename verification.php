@@ -1,14 +1,14 @@
-<?php
-	// verification.php - Entry point for human verification
+<?php // verification.php - Entry point for human verification
 	session_start();
 
-	// If already verified, redirect to the main application
-	if (isset($_SESSION['is_human_verified']) && $_SESSION['is_human_verified'] === true) {
+	// If already verified and logged in, redirect to the main application
+	if (isset($_SESSION['is_human_verified']) && $_SESSION['is_human_verified'] === true && isset($_SESSION['user_id'])) {
 		header('Location: index.php');
 		exit;
 	}
 
 	require __DIR__ . '/vendor/autoload.php';
+
 	use Dotenv\Dotenv;
 
 	// Load environment variables
@@ -37,16 +37,12 @@
 						'remoteip' => $_SERVER['REMOTE_ADDR'] ?? null
 					]
 				]);
-
 				$body = json_decode((string)$response->getBody(), true);
 
 				if ($body && isset($body['success']) && $body['success'] === true) {
-					// Verification successful, set session and redirect
+					// Verification successful, set session and redirect to the login page
 					$_SESSION['is_human_verified'] = true;
-					// Also set the TTS verification since we're verifying the user globally
-					$_SESSION['recaptcha_tts_verified'] = true;
-
-					header('Location: index.php');
+					header('Location: login.php');
 					exit;
 				} else {
 					$verificationError = 'Verification failed. Please try again.';
@@ -62,7 +58,8 @@
 	}
 ?>
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="<?php echo isset($_COOKIE['theme']) && $_COOKIE['theme'] === 'dark' ? 'dark' : 'light'; ?>">
+<html lang="en"
+      data-bs-theme="<?php echo isset($_COOKIE['theme']) && $_COOKIE['theme'] === 'dark' ? 'dark' : 'light'; ?>">
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -82,18 +79,15 @@
 				<div class="card-body">
 					<p class="text-center">
 						To use Read Out Slowly, please verify that you're human.
-						This verification will allow you to use all features including text-to-speech.
 					</p>
-
 					<?php if ($verificationError): ?>
 						<div class="alert alert-danger"><?php echo htmlspecialchars($verificationError); ?></div>
 					<?php endif; ?>
-
 					<form method="POST" class="text-center">
 						<div class="mb-4 d-flex justify-content-center">
-							<div class="g-recaptcha" data-sitekey="<?php echo htmlspecialchars($_ENV['RECAPTCHA_V2_CHECKBOX_SITE_KEY'] ?? ''); ?>"></div>
+							<div class="g-recaptcha"
+							     data-sitekey="<?php echo htmlspecialchars($_ENV['RECAPTCHA_V2_CHECKBOX_SITE_KEY'] ?? ''); ?>"></div>
 						</div>
-
 						<button type="submit" class="btn btn-primary btn-lg">
 							<i class="fas fa-check-circle"></i> Verify and Continue
 						</button>
@@ -103,7 +97,6 @@
 		</div>
 	</div>
 </div>
-
 <script src="public/vendor/bootstrap5.3.5/js/bootstrap.bundle.min.js"></script>
 <script src="public/js/dark-mode.js"></script>
 </body>
