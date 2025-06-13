@@ -42,7 +42,7 @@
 
 	<div class="card mb-3" id="displayTextCard">
 		<div class="card-body">
-			<div id="displayText" style="font-size: 40px;">Loading text...</div>
+			<div id="displayText" style="font-size: 40px; margin-bottom:150px;">Loading text...</div>
 			<button id="floatingPlayButton" class="btn btn-lg btn-primary"
 			        style="display:none; position: absolute; z-index: 1000;">
 				<i class="fas fa-play-circle"></i> Read

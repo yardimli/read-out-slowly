@@ -9,9 +9,7 @@ class PlaybackManager {
 		this.holdStartTime = 0;
 		this.holdAnimationId = null;
 		this.isHoldingSpeakNext = false;
-		
 		this.unreadTextOpacity = 0.3;
-		
 		this.isFloatingButtonEnabled = false;
 		this.floatingPlayButtonElement = null;
 	}
@@ -20,9 +18,7 @@ class PlaybackManager {
 		this.elements.stopPlaybackBtn.disabled = true;
 		this.floatingPlayButtonElement = document.getElementById('floatingPlayButton');
 		this._bindPlaybackButtonListeners();
-		
 		this.isFloatingButtonEnabled = this.elements.floatingPlayButtonSwitch.checked;
-		
 		if (this.floatingPlayButtonElement) {
 			this.floatingPlayButtonElement.addEventListener('click', () => {
 				this.executeSpeakNextAction();
@@ -64,7 +60,6 @@ class PlaybackManager {
 			utterance.onend = () => {
 				resolve();
 			};
-			
 			utterance.onerror = (event) => {
 				reject(new Error(`Speech synthesis error: ${event.error}`));
 			};
@@ -76,7 +71,6 @@ class PlaybackManager {
 	
 	displayFullTextWithOpacity() {
 		const fullText = this.elements.mainTextarea.value;
-		
 		if (fullText.trim() === '') {
 			this.elements.displayText.innerHTML = "Textarea is empty. Please enter or generate text.";
 			return;
@@ -100,10 +94,9 @@ class PlaybackManager {
 		
 		// Construct HTML with read and unread parts
 		const html = `
-        <span class="read-part">${readPart.replace(/\n/g, '<br>')}</span>
-        <span class="unread-text">${unreadPart.replace(/\n/g, '<br>')}</span>
-    `;
-		
+            <span class="read-part">${readPart.replace(/\n/g, '<br>')}</span>
+            <span class="unread-text">${unreadPart.replace(/\n/g, '<br>')}</span>
+        `;
 		this.elements.displayText.innerHTML = html;
 		
 		// Apply current opacity setting
@@ -130,8 +123,12 @@ class PlaybackManager {
 	_extractChunkInternal(textToProcess, targetCount, unit) {
 		let chunkEndIndex = -1;
 		let itemsInChunk = 0;
+		
 		if (textToProcess.length === 0) {
-			return {text: "", length: 0};
+			return {
+				text: "",
+				length: 0
+			};
 		}
 		
 		if (unit === 'words') {
@@ -148,6 +145,7 @@ class PlaybackManager {
 						inWord = false;
 					}
 				}
+				
 				// Break conditions for words
 				if (char === '.' || char === ',' || char === '\n') { // Natural breaks
 					if (inWord) { // Count word if ending on punctuation
@@ -159,6 +157,7 @@ class PlaybackManager {
 						break;
 					}
 				}
+				
 				if (itemsInChunk >= targetCount && lastWordEndIndex !== -1) {
 					chunkEndIndex = lastWordEndIndex;
 					break;
@@ -166,6 +165,7 @@ class PlaybackManager {
 				chunkEndIndex = i; // Always advance chunkEndIndex to cover the whole string if no break condition met
 			}
 			if (inWord) itemsInChunk++; // Count last word if text ends mid-word
+			
 		} else if (unit === 'sentences') {
 			let lastValidSentenceEnd = -1;
 			for (let i = 0; i < textToProcess.length; i++) {
@@ -186,6 +186,7 @@ class PlaybackManager {
 						break;
 					}
 				}
+				
 				if (itemsInChunk >= targetCount && lastValidSentenceEnd !== -1) {
 					chunkEndIndex = lastValidSentenceEnd;
 					break;
@@ -204,10 +205,17 @@ class PlaybackManager {
 		if (chunkEndIndex === -1 && textToProcess.length > 0) {
 			chunkEndIndex = textToProcess.length - 1;
 		} else if (textToProcess.length === 0) {
-			return {text: "", length: 0};
+			return {
+				text: "",
+				length: 0
+			};
 		}
+		
 		const chunkText = textToProcess.substring(0, chunkEndIndex + 1);
-		return {text: chunkText, length: chunkText.length};
+		return {
+			text: chunkText,
+			length: chunkText.length
+		};
 	}
 	
 	getNextChunk() {
@@ -217,6 +225,7 @@ class PlaybackManager {
 			this.currentTextPosition = 0; // Reset for next play from start
 			return null;
 		}
+		
 		if (fullText.length === 0) {
 			this.showStatus('Textarea is empty.', 'warning');
 			return null;
@@ -242,7 +251,11 @@ class PlaybackManager {
 			this.currentTextPosition = fullText.length;
 			return null;
 		}
-		return {text: chunkResult.text, newPosition: this.currentTextPosition + chunkResult.length};
+		
+		return {
+			text: chunkResult.text,
+			newPosition: this.currentTextPosition + chunkResult.length
+		};
 	}
 	
 	playAudio(url, onEndedCallback, onPlayStartCallback) {
@@ -279,9 +292,9 @@ class PlaybackManager {
 			}
 			this.elements.playAllBtn.disabled = false;
 			this.elements.stopPlaybackBtn.disabled = true;
-			
 			if (onEndedCallback) onEndedCallback();
 		};
+		
 		this.elements.audioPlayer.onerror = (e) => {
 			console.error("Audio player error:", e);
 			this.showStatus("Audio player error. Check console.", 'danger');
@@ -307,11 +320,10 @@ class PlaybackManager {
 		if (this.elements.audioPlayer && !this.elements.audioPlayer.paused) {
 			this.elements.audioPlayer.pause();
 		}
-		
 		this.elements.audioPlayer.currentTime = 0;
 		this.elements.audioPlayer.src = ""; // Release audio resource
-		this.isPlaying = false;
 		
+		this.isPlaying = false;
 		this.elements.speakNextBtn.disabled = false;
 		if (this.isFloatingButtonEnabled) {
 			this.floatingPlayButtonElement.style.display = 'block';
@@ -325,30 +337,31 @@ class PlaybackManager {
 			this.playAllAbortController.abort();
 			this.playAllAbortController = null;
 		}
-
 		this.cancelSpeakNextHold();
-		
 		if (this.floatingPlayButtonElement) {
 			this.floatingPlayButtonElement.style.display = 'none';
 		}
-		
 	}
 	
 	async fetchAndCacheChunk(textChunk, signal) {
-		if (!textChunk || textChunk.trim() === "") return {success: false, message: "Empty chunk"};
+		if (!textChunk || textChunk.trim() === "") return {
+			success: false,
+			message: "Empty chunk"
+		};
 		
 		const trimmedTextChunk = textChunk.trim();
 		const ttsEngine = this.elements.ttsEngineSelect.value;
 		const ttsVoice = this.elements.ttsVoiceSelect.value;
-		const ttsLanguageCode = (ttsEngine === 'google' && !this.elements.ttsLanguageCodeSelect.disabled)
-			? this.elements.ttsLanguageCodeSelect.value
-			: 'n/a';
+		const ttsLanguageCode = (ttsEngine === 'google' && !this.elements.ttsLanguageCodeSelect.disabled) ? this.elements.ttsLanguageCodeSelect.value : 'n/a';
 		const volume = this.elements.volumeInput.value;
-		
 		const chunkHash = this._simpleHash(trimmedTextChunk + ttsEngine + ttsVoice + ttsLanguageCode + volume);
 		
 		if (this.audioCache[chunkHash]) {
-			return {success: true, cached: true, url: this.audioCache[chunkHash]};
+			return {
+				success: true,
+				cached: true,
+				url: this.audioCache[chunkHash]
+			};
 		}
 		
 		this.showStatus(`Requesting TTS for: "${trimmedTextChunk.substring(0, 30)}..."`, 'info', null);
@@ -363,7 +376,10 @@ class PlaybackManager {
 			formData.append('volume', volume);
 			
 			// If signal is provided (for abortion), use it in the fetch options
-			const fetchOptions = {method: 'POST', body: formData};
+			const fetchOptions = {
+				method: 'POST',
+				body: formData
+			};
 			if (signal) fetchOptions.signal = signal;
 			
 			const response = await fetch('ajax.php', fetchOptions);
@@ -380,7 +396,11 @@ class PlaybackManager {
 			
 			if (result.success && result.fileUrl) {
 				this.audioCache[chunkHash] = result.fileUrl;
-				return {success: true, cached: false, url: result.fileUrl};
+				return {
+					success: true,
+					cached: false,
+					url: result.fileUrl
+				};
 			} else {
 				throw new Error(result.message || 'TTS generation failed on server');
 			}
@@ -400,8 +420,8 @@ class PlaybackManager {
 			if (onEndedCallback) onEndedCallback();
 			return;
 		}
-		
 		const trimmedTextChunk = textChunk.trim();
+		
 		this.elements.speakNextBtn.disabled = true;
 		if (this.isFloatingButtonEnabled) {
 			this.floatingPlayButtonElement.style.display = 'none';
@@ -411,7 +431,6 @@ class PlaybackManager {
 		try {
 			// Check if using browser TTS
 			const ttsEngine = this.elements.ttsEngineSelect.value;
-			
 			if (ttsEngine === 'browser') {
 				// Get browser TTS settings
 				const voiceName = this.elements.browserVoiceSelect ? this.elements.browserVoiceSelect.value : '';
@@ -420,7 +439,6 @@ class PlaybackManager {
 				
 				// Call onPlayStartCallback before starting speech
 				if (onPlayStartCallback) onPlayStartCallback();
-				
 				this.showStatus(`Playing with browser speech: "${trimmedTextChunk.substring(0, 30)}..."`, 'info', 1500);
 				this.isPlaying = true;
 				this.elements.stopPlaybackBtn.disabled = false;
@@ -441,11 +459,15 @@ class PlaybackManager {
 				}
 				this.elements.playAllBtn.disabled = false;
 				this.elements.stopPlaybackBtn.disabled = true;
-				
 				if (onEndedCallback) onEndedCallback();
+				
 			} else {
 				// Original server-side TTS code
-				const {success, cached, url} = await this.fetchAndCacheChunk(trimmedTextChunk, signal);
+				const {
+					success,
+					cached,
+					url
+				} = await this.fetchAndCacheChunk(trimmedTextChunk, signal);
 				if (success) {
 					if (cached) {
 						this.showStatus(`Playing cached audio for: "${trimmedTextChunk.substring(0, 30)}..."`, 'info', 1500);
@@ -490,29 +512,59 @@ class PlaybackManager {
 			
 			this.getAndPlayAudio(
 				chunkData.text.trim(),
-				() => {
-					// onEndedCallback
+				() => { // onEndedCallback
 					const currentChunkSpan = document.getElementById(chunkId);
 					if (currentChunkSpan) currentChunkSpan.classList.remove('highlight');
 					
-					// Position the floating button if enabled
-					console.log(this.isFloatingButtonEnabled, this.floatingPlayButtonElement, currentChunkSpan);
-					// In executeSpeakNextAction or where the positioning happens:
-					if (this.isFloatingButtonEnabled && this.floatingPlayButtonElement && currentChunkSpan) {
-						const rect = currentChunkSpan.getBoundingClientRect();
-						const cardRect = this.elements.displayTextCard.getBoundingClientRect();
-						
-						// Position relative to the card, not the window
-						const buttonTop = rect.bottom - cardRect.top + 5;
-						const buttonLeft = rect.left - cardRect.left;
-						
-						this.floatingPlayButtonElement.style.top = `${buttonTop}px`;
-						this.floatingPlayButtonElement.style.left = `${buttonLeft}px`;
-						this.floatingPlayButtonElement.style.display = 'block';
+					// Position the floating button under the *next* chunk to be read.
+					if (this.isFloatingButtonEnabled && this.floatingPlayButtonElement) {
+						const unreadSpan = document.querySelector('.unread-text');
+						if (unreadSpan && unreadSpan.textContent.trim().length > 0) {
+							// There is unread text. Let's find its position.
+							let positionNode = null;
+							let positionOffset = 0;
+							
+							// Use a TreeWalker to find the first text node with actual content.
+							// This correctly skips over <br> tags or empty text nodes.
+							const treeWalker = document.createTreeWalker(unreadSpan, NodeFilter.SHOW_TEXT, null, false);
+							let currentNode;
+							while (currentNode = treeWalker.nextNode()) {
+								if (currentNode.textContent.trim().length > 0) {
+									positionNode = currentNode;
+									// Find the offset of the first non-whitespace character.
+									positionOffset = currentNode.textContent.search(/\S/);
+									break;
+								}
+							}
+							
+							if (positionNode) {
+								const range = document.createRange();
+								// Create a range around the first non-whitespace character to get its coordinates.
+								range.setStart(positionNode, positionOffset);
+								range.setEnd(positionNode, positionOffset + 1);
+								const rect = range.getBoundingClientRect();
+								const cardRect = this.elements.displayTextCard.getBoundingClientRect();
+								
+								// Position the button below the start of the unread text.
+								// The position is relative to the displayTextCard.
+								const buttonTop = rect.bottom - cardRect.top + 5; // 5px margin below the line.
+								const buttonLeft = rect.left - cardRect.left;
+								
+								this.floatingPlayButtonElement.style.top = `${buttonTop}px`;
+								this.floatingPlayButtonElement.style.left = `${buttonLeft}px`;
+								this.floatingPlayButtonElement.style.display = 'block';
+							} else {
+								// No visible text found in the unread part, so hide the button.
+								this.floatingPlayButtonElement.style.display = 'none';
+							}
+						} else {
+							// No unread text left, or it's just whitespace. Hide the button.
+							// This happens at the end of the text.
+							this.floatingPlayButtonElement.style.display = 'none';
+						}
 					}
 				},
-				() => {
-					// onPlayStartCallback
+				() => { // onPlayStartCallback
 					// Update display with full text and current position
 					this.displayFullTextWithOpacity();
 					
@@ -534,7 +586,10 @@ class PlaybackManager {
 						}
 						
 						// Scroll to the highlighted text
-						tempSpan.scrollIntoView({behavior: 'smooth', block: 'center'});
+						tempSpan.scrollIntoView({
+							behavior: 'smooth',
+							block: 'center'
+						});
 						
 						// Adjust scroll position for fixed playback controls
 						setTimeout(() => {
@@ -543,9 +598,13 @@ class PlaybackManager {
 							const viewportHeight = window.innerHeight;
 							const playbackControlsHeight = this.elements.playbackControlsContainer.offsetHeight || 80;
 							const desiredBottomMargin = playbackControlsHeight + 20;
+							
 							if (rect.bottom > viewportHeight - desiredBottomMargin) {
 								const scrollAmount = rect.bottom - (viewportHeight - desiredBottomMargin);
-								window.scrollBy({top: scrollAmount, behavior: 'smooth'});
+								window.scrollBy({
+									top: scrollAmount,
+									behavior: 'smooth'
+								});
 							}
 						}, 100);
 					}
@@ -567,9 +626,9 @@ class PlaybackManager {
 		const holdDuration = parseInt(this.elements.speakNextHoldDurationInput.value) || 0;
 		const elapsed = Date.now() - this.holdStartTime;
 		const progress = Math.min(100, (elapsed / holdDuration) * 100);
-		
 		const theme = document.documentElement.getAttribute('data-bs-theme');
 		const unfilledColor = theme === 'dark' ? '#6c757d' : '#444';
+		
 		this.elements.holdSpinner.style.background = `conic-gradient(dodgerblue ${progress * 3.6}deg, ${unfilledColor} ${progress * 3.6}deg)`;
 		this.elements.holdSpinnerProgressText.textContent = `${Math.round(progress)}%`;
 		
@@ -602,10 +661,11 @@ class PlaybackManager {
 	async playAllChunks() {
 		if (this.isPlaying) return;
 		this.stopCurrentPlayback();
+		
 		this.playAllAbortController = new AbortController();
 		const signal = this.playAllAbortController.signal;
-		const fullText = this.elements.mainTextarea.value;
 		
+		const fullText = this.elements.mainTextarea.value;
 		if (!fullText.trim()) {
 			this.showStatus('Textarea is empty.', 'warning');
 			this.playAllAbortController = null;
@@ -629,6 +689,7 @@ class PlaybackManager {
 			if (remainingTextForPlayAll === "") break;
 			
 			const chunkResultPlayAll = this._extractChunkInternal(remainingTextForPlayAll, countPerChunk, unit);
+			
 			if (chunkResultPlayAll.length === 0 && remainingTextForPlayAll.length > 0) {
 				console.warn("PlayAll: _extractChunkInternal returned empty for non-empty input. Appending rest.");
 				highlightedTextHtml += remainingTextForPlayAll.substring(0).replace(/\n/g, '<br>');
@@ -640,12 +701,18 @@ class PlaybackManager {
 			let originalChunkText = chunkResultPlayAll.text;
 			const chunkId = `playall-chunk-${displayChunkIndex}`;
 			highlightedTextHtml += `<span id="${chunkId}">${originalChunkText.replace(/\n/g, '<br>')}</span>`;
+			
 			if (originalChunkText.trim() !== "") {
-				chunksToPlay.push({text: originalChunkText.trim(), originalChunk: originalChunkText, id: chunkId});
+				chunksToPlay.push({
+					text: originalChunkText.trim(),
+					originalChunk: originalChunkText,
+					id: chunkId
+				});
 			}
 			tempPosition += chunkResultPlayAll.length;
 			displayChunkIndex++;
 		}
+		
 		this.elements.displayText.innerHTML = highlightedTextHtml;
 		
 		if (chunksToPlay.length === 0) {
@@ -670,7 +737,6 @@ class PlaybackManager {
 		this.elements.stopPlaybackBtn.disabled = false;
 		
 		let currentOverallTextPosition = 0;
-		
 		this.displayFullTextWithOpacity();
 		
 		for (let i = 0; i < chunksToPlay.length; i++) {
@@ -678,10 +744,11 @@ class PlaybackManager {
 				this.showStatus('Playback stopped.', 'info');
 				break;
 			}
-			const currentChunkData = chunksToPlay[i];
 			
+			const currentChunkData = chunksToPlay[i];
 			let chunkStartIndexInFullText = fullText.indexOf(currentChunkData.originalChunk, currentOverallTextPosition);
 			if (chunkStartIndexInFullText === -1 && i === 0) chunkStartIndexInFullText = 0;
+			
 			if (chunkStartIndexInFullText !== -1) {
 				currentOverallTextPosition = chunkStartIndexInFullText + currentChunkData.originalChunk.length;
 			} else {
@@ -705,16 +772,13 @@ class PlaybackManager {
 						},
 						() => { // onPlayStartCallback
 							document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
-							
 							this.displayFullTextWithOpacity();
-							
 							const readPart = document.querySelector('.read-part');
 							if (readPart) {
 								const tempSpan = document.createElement('span');
 								tempSpan.id = currentChunkData.id;
 								tempSpan.classList.add('highlight');
 								tempSpan.innerHTML = currentChunkData.originalChunk.replace(/\n/g, '<br>');
-								
 								// Add the highlighted span
 								readPart.appendChild(tempSpan);
 								
@@ -722,7 +786,10 @@ class PlaybackManager {
 								const currentChunkSpanInDOM = document.getElementById(currentChunkData.id);
 								if (currentChunkSpanInDOM) {
 									currentChunkSpanInDOM.classList.add('highlight');
-									currentChunkSpanInDOM.scrollIntoView({behavior: 'smooth', block: 'center'});
+									currentChunkSpanInDOM.scrollIntoView({
+										behavior: 'smooth',
+										block: 'center'
+									});
 									setTimeout(() => {
 										if (!currentChunkSpanInDOM || signal.aborted) return;
 										const rect = currentChunkSpanInDOM.getBoundingClientRect();
@@ -731,7 +798,10 @@ class PlaybackManager {
 										const desiredBottomMargin = playbackControlsHeight + 20;
 										if (rect.bottom > viewportHeight - desiredBottomMargin) {
 											const scrollAmount = rect.bottom - (viewportHeight - desiredBottomMargin);
-											window.scrollBy({top: scrollAmount, behavior: 'smooth'});
+											window.scrollBy({
+												top: scrollAmount,
+												behavior: 'smooth'
+											});
 										}
 									}, 100);
 								}
@@ -741,7 +811,9 @@ class PlaybackManager {
 					);
 					signal.addEventListener('abort', () => {
 						reject(new DOMException('Aborted', 'AbortError'));
-					}, {once: true});
+					}, {
+						once: true
+					});
 				});
 			} catch (error) {
 				if (error.name === 'AbortError') {
@@ -768,6 +840,7 @@ class PlaybackManager {
 		} else if (chunksToPlay.length === 0 && !signal.aborted) {
 			// Message already shown
 		}
+		
 		if (signal.aborted) {
 			document.querySelectorAll('#displayText .highlight').forEach(el => el.classList.remove('highlight'));
 		}
@@ -802,7 +875,9 @@ class PlaybackManager {
 			}
 			this.elements.holdSpinnerOverlay.style.display = 'flex';
 			this.updateHoldSpinner();
-		}, {passive: false});
+		}, {
+			passive: false
+		});
 		
 		document.addEventListener('mouseup', () => this._releaseSpeakNextHandler());
 		document.addEventListener('touchend', () => this._releaseSpeakNextHandler());
