@@ -3,6 +3,8 @@
 
 	use App\Helpers\AuthHelper;
 
+	// Fetch user settings to inject into the page for JS
+	$userSettings = AuthHelper::getSettings($_SESSION['user_id']);
 ?>
 <!DOCTYPE html>
 <html lang="en"> <!-- data-bs-theme will be set here by JS -->
@@ -16,9 +18,12 @@
 	<script>
 		// This variable is now legacy but kept to prevent potential JS errors if referenced elsewhere.
 		var recaptchaTtsAlreadyVerified = true;
+		// Inject user settings from PHP into a global JS variable
+		window.USER_SETTINGS = <?php echo json_encode($userSettings ?: new stdClass()); ?>;
 	</script>
 </head>
 <body>
+
 <div class="container mt-4">
 	<div class="card mb-3" id="settingsCard">
 		<div class="card-header d-flex justify-content-between align-items-center">
@@ -145,6 +150,7 @@
 			</div>
 		</div>
 	</div>
+
 	<!-- AI Generation Modal (remains the same) -->
 	<div class="modal fade" id="aiGenerateModal" tabindex="-1" aria-labelledby="aiGenerateModalLabel" aria-hidden="true">
 		<div class="modal-dialog modal-lg">
@@ -172,18 +178,18 @@
 			</div>
 		</div>
 	</div>
-	<!-- Load from LocalStorage Modal (remains the same) -->
+
+	<!-- Load from DB Modal -->
 	<div class="modal fade" id="localStorageLoadModal" tabindex="-1" aria-labelledby="localStorageLoadModalLabel"
 	     aria-hidden="true">
 		<div class="modal-dialog modal-lg">
 			<div class="modal-content">
-				<div class="modal-header"><h5 class="modal-title" id="localStorageLoadModalLabel">Load Text from Local
-						Storage</h5>
+				<div class="modal-header"><h5 class="modal-title" id="localStorageLoadModalLabel">Load Saved Text</h5>
 					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 				</div>
 				<div class="modal-body">
 					<ul id="savedTextsList" class="list-group">
-						<!-- Items will be populated by JavaScript -->
+						<!-- Items will be populated by JavaScript from the database -->
 					</ul>
 				</div>
 				<div class="modal-footer">
@@ -192,20 +198,23 @@
 			</div>
 		</div>
 	</div>
+
 	<div class="mb-3">
 		<label for="mainTextarea" class="form-label" id="mainTextareaLabel">Enter or generate text below:</label>
 		<textarea id="mainTextarea" class="form-control" rows="6" placeholder="Type or paste your text here..."></textarea>
 	</div>
+
 	<!-- REMOVED: displayTextCard, audioPlayer, playbackControlsContainer, holdSpinnerOverlay -->
 	<div id="statusMessage" class="alert alert-info" style="display:none;"></div>
+
 	<div class="d-flex flex-wrap align-items-center mb-5" id="mainControlsContainer">
 		<button class="btn btn-info me-2 mb-2" data-bs-toggle="modal" data-bs-target="#aiGenerateModal"><i
 				class="fas fa-robot"></i> Generate with AI
 		</button>
-		<button id="saveToStorageBtn" class="btn btn-success me-2 mb-2"><i class="fas fa-save"></i> Save to LocalStorage
+		<button id="saveToStorageBtn" class="btn btn-success me-2 mb-2"><i class="fas fa-save"></i> Save Text
 		</button>
 		<button id="loadFromStorageBtn" class="btn btn-warning me-2 mb-2" data-bs-toggle="modal"
-		        data-bs-target="#localStorageLoadModal"><i class="fas fa-upload"></i> Load from LocalStorage
+		        data-bs-target="#localStorageLoadModal"><i class="fas fa-upload"></i> Load Text
 		</button>
 		<button id="pregenerateAllBtn" class="btn btn-secondary me-2 mb-2"><i class="fas fa-cogs"></i> Pregenerate All Audio
 		</button>
@@ -213,6 +222,7 @@
 		</button>
 	</div>
 </div> <!-- End container -->
+
 <script src="public/vendor/bootstrap5.3.5/js/bootstrap.bundle.min.js"></script>
 <script src="public/js/ui-manager.js"></script>
 <script src="public/js/script.js"></script>

@@ -407,7 +407,7 @@ class PlaybackManager {
 			const fetchOptions = {method: 'POST', body: formData};
 			if (signal) fetchOptions.signal = signal;
 			
-			const response = await fetch(window.location.href, fetchOptions);
+			const response = await fetch('ajax.php', fetchOptions);
 			
 			if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
 			

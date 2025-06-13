@@ -9,7 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
 		ttsVoiceSelect: document.getElementById('ttsVoiceSelect'), // Hidden
 		ttsLanguageCodeSelect: document.getElementById('ttsLanguageCodeSelect'), // Hidden
 		browserVoiceSelect: document.getElementById('browserVoiceSelect'), // Hidden, value set from localStorage
-		floatingPlayButtonSwitch: document.getElementById('floatingPlayButtonSwitch'), // Hidden, checked state set from localStorage
+		floatingPlayButtonSwitch: document.getElementById('floatingPlayButtonSwitch'), // Hidden, checked state set from DB
 		speakNextHoldDurationInput: document.getElementById('speakNextHoldDurationInput'), // Hidden
 		
 		// Elements for UI on this page
@@ -37,7 +37,8 @@ document.addEventListener('DOMContentLoaded', () => {
 	let statusTimeout;
 	
 	function showStatus(message, type = 'info', duration = 3000) {
-		const statusVerbosity = localStorage.getItem('statusVerbosity') || 'errors';
+		// Use the verbosity setting from the injected settings
+		const statusVerbosity = window.USER_SETTINGS?.statusVerbosity || 'errors';
 		if (statusVerbosity === 'none') return;
 		if (statusVerbosity === 'errors' && type !== 'danger' && type !== 'warning') return;
 		
@@ -45,7 +46,6 @@ document.addEventListener('DOMContentLoaded', () => {
 			DOMElements.statusMessage.textContent = message;
 			DOMElements.statusMessage.className = `alert alert-${type} mt-2`;
 			DOMElements.statusMessage.style.display = 'block';
-			
 			if (statusTimeout) clearTimeout(statusTimeout);
 			if (duration) {
 				statusTimeout = setTimeout(() => {
@@ -64,7 +64,6 @@ document.addEventListener('DOMContentLoaded', () => {
 			try {
 				// Get all CSS rules in this stylesheet
 				const rules = styleSheet.cssRules || styleSheet.rules;
-				
 				for (let j = 0; j < rules.length; j++) {
 					// Find the rule that matches our class
 					if (rules[j].selectorText === className) {
@@ -80,6 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	}
 	
 	function loadSettingsAndText() {
+		// Text is still passed via localStorage for this transient purpose
 		const textToRead = localStorage.getItem('textToReadOutSlowly');
 		const textTitle = localStorage.getItem('textToReadOutSlowlyTitle') || "Reading Text";
 		
@@ -98,39 +98,36 @@ document.addEventListener('DOMContentLoaded', () => {
 			return false;
 		}
 		
-		// Load settings into hidden inputs for PlaybackManager
-		DOMElements.wordsPerChunkInput.value = localStorage.getItem('wordsPerChunk') || '10';
-		DOMElements.chunkUnitSelect.value = localStorage.getItem('chunkUnit') || 'words';
-		DOMElements.volumeInput.value = localStorage.getItem('volume') || '6';
-		DOMElements.ttsEngineSelect.value = localStorage.getItem('ttsEngine') || 'openai';
-		DOMElements.ttsVoiceSelect.value = localStorage.getItem('ttsVoice') || 'nova';
-		DOMElements.ttsLanguageCodeSelect.value = localStorage.getItem('ttsLanguageCode') || 'en-US';
-		DOMElements.browserVoiceSelect.value = localStorage.getItem('browserTtsVoice') || ''; // For browser TTS
-		DOMElements.speakNextHoldDurationInput.value = localStorage.getItem('speakNextHoldDuration') || '750';
+		// Load settings from the injected window.USER_SETTINGS object
+		const settings = window.USER_SETTINGS || {};
+		const getSetting = (key, defaultValue) => settings[key] !== undefined ? settings[key] : defaultValue;
 		
-		const floatingButtonEnabled = localStorage.getItem('floatingPlayButtonEnabled') === 'true';
+		DOMElements.wordsPerChunkInput.value = getSetting('wordsPerChunk', '10');
+		DOMElements.chunkUnitSelect.value = getSetting('chunkUnit', 'words');
+		DOMElements.volumeInput.value = getSetting('volume', '6');
+		DOMElements.ttsEngineSelect.value = getSetting('ttsEngine', 'openai');
+		DOMElements.ttsVoiceSelect.value = getSetting('ttsVoice', 'nova');
+		DOMElements.ttsLanguageCodeSelect.value = getSetting('ttsLanguageCode', 'en-US');
+		// Browser voice is still from localStorage as it's browser-specific
+		DOMElements.browserVoiceSelect.value = localStorage.getItem('browserTtsVoice') || '';
+		DOMElements.speakNextHoldDurationInput.value = getSetting('speakNextHoldDuration', '750');
+		
+		const floatingButtonEnabled = getSetting('floatingPlayButtonEnabled', false);
 		DOMElements.floatingPlayButtonSwitch.checked = floatingButtonEnabled;
-		
-		DOMElements.speakNextBtn.style.display = DOMElements.floatingPlayButtonSwitch.checked ? 'none' : 'inline-block';
-		DOMElements.floatingPlayButtonElement.style.display = DOMElements.floatingPlayButtonSwitch.checked ? 'block' : 'none';
-		
+		DOMElements.speakNextBtn.style.display = floatingButtonEnabled ? 'none' : 'inline-block';
+		// The floating button itself is managed by PlaybackManager
 		
 		// Apply visual settings directly
-		const fontSize = localStorage.getItem('displayTextFontSize') || '40';
+		const fontSize = getSetting('displayTextFontSize', '40');
 		DOMElements.displayText.style.fontSize = `${fontSize}px`;
 		
-		const showPlayAll = localStorage.getItem('showPlayAllButton') !== 'false'; // Default to true
+		const showPlayAll = getSetting('showPlayAllButton', true);
 		DOMElements.playAllBtn.style.display = showPlayAll ? 'inline-block' : 'none';
-		// Stop button visibility is often tied to playAll or general playback activity
 		DOMElements.stopPlaybackBtn.style.display = showPlayAll ? 'inline-block' : 'none';
 		
-		// Apply dark mode if set
-		const darkMode = localStorage.getItem('darkMode');
-		if (darkMode === 'enabled') {
-			document.documentElement.setAttribute('data-bs-theme', 'dark');
-		} else {
-			document.documentElement.setAttribute('data-bs-theme', 'light');
-		}
+		// Apply dark mode if set (dark-mode.js handles this, but we can be explicit)
+		const darkMode = getSetting('darkMode', 'light'); // Assuming you save 'dark' or 'light'
+		document.documentElement.setAttribute('data-bs-theme', darkMode);
 		
 		return true;
 	}
@@ -138,11 +135,9 @@ document.addEventListener('DOMContentLoaded', () => {
 	if (loadSettingsAndText()) {
 		const playbackManagerInstance = new PlaybackManager(DOMElements, showStatus);
 		
-		const unreadOpacitySetting = localStorage.getItem('unreadTextOpacity') || '30';
+		const unreadOpacitySetting = window.USER_SETTINGS?.unreadTextOpacity || '30';
 		playbackManagerInstance.unreadTextOpacity = parseInt(unreadOpacitySetting) / 100;
-		
 		modifyClassStyle('.unread-text', 'opacity', `${playbackManagerInstance.unreadTextOpacity}`);
-		
 		
 		playbackManagerInstance.init();
 		
@@ -151,10 +146,8 @@ document.addEventListener('DOMContentLoaded', () => {
 		} else {
 			playbackManagerInstance.displayFullTextWithOpacity();
 		}
-		
 		// Make playbackManagerInstance globally accessible for debugging if needed
 		// window.playbackManager = playbackManagerInstance;
-		
 	} else {
 		console.error("Failed to load text or settings for playback.");
 	}

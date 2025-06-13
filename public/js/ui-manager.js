@@ -2,7 +2,6 @@ class UIManager {
 	constructor(elements) {
 		this.elements = elements;
 		this.statusVerbosity = 'errors';
-		// Removed: this.playbackManager, this.pregenerateAbortController, this.isFloatingButtonEnabled
 		this.voices = { // Keep this for populating voice selects on index.php
 			openai: [{value: "alloy", text: "Alloy"}, {value: "echo", text: "Echo"}, {
 				value: "fable",
@@ -26,141 +25,125 @@ class UIManager {
 			},]
 		};
 		this.aiModalInstance = null;
+		this.userTexts = []; // To hold texts loaded from the DB
 	}
 	
-	// Removed: setPlaybackManager
+	// --- Start: Functions to replace localStorage with DB sync ---
+	async _updateDbSetting(key, value) {
+		const formData = new FormData();
+		formData.append('action', 'update_user_setting');
+		formData.append('setting_key', key);
+		formData.append('setting_value', value);
+		try {
+			const response = await fetch('ajax.php', {method: 'POST', body: formData});
+			const result = await response.json();
+			if (!result.success) {
+				console.error(`Failed to save setting ${key}:`, result.message);
+				this.showStatus(`Error saving setting: ${result.message}`, 'danger');
+			}
+		} catch (error) {
+			console.error(`Error saving setting ${key}:`, error);
+			this.showStatus(`Network error while saving setting.`, 'danger');
+		}
+	}
 	
-	init() {
-		this._loadAndApplyInitialSettings(); // Loads and applies to index.php UI, saves to localStorage
-		this._bindSettingsListeners();      // Binds listeners on index.php, saves to localStorage
+	async _loadUserTexts() {
+		try {
+			const formData = new FormData();
+			formData.append('action', 'get_user_texts');
+			const response = await fetch('ajax.php', {method: 'POST', body: formData});
+			const result = await response.json();
+			if (result.success) {
+				this.userTexts = result.texts;
+			} else {
+				this.showStatus('Could not load saved texts: ' + result.message, 'warning');
+			}
+		} catch (error) {
+			this.showStatus('Network error loading saved texts.', 'danger');
+		}
+	}
+	
+	// --- End: DB Sync Functions ---
+	
+	async init() {
+		await this._loadUserTexts(); // Load texts from DB first
+		this._loadAndApplyInitialSettings(); // Loads from window.USER_SETTINGS, not localStorage
+		this._bindSettingsListeners(); // Binds listeners that now save to DB
 		this._bindAIGenerationListeners();
-		this._bindLocalStorageListeners();
+		this._bindLocalStorageListeners(); // Renamed, but now binds to DB operations
 		this._bindMainTextareaListener();
-		this._bindChunkUnitListener();      // Saves to localStorage, updates related UI on index.php
-		this._bindTtsSettingsListeners();   // Saves to localStorage, updates related UI on index.php
-		this._updateVoiceAndLanguageUI();   // Updates UI on index.php based on selections
-		
+		this._bindChunkUnitListener();
+		this._bindTtsSettingsListeners();
+		this._updateVoiceAndLanguageUI();
 		if (this.elements.aiGenerateModal) {
 			this.aiModalInstance = new bootstrap.Modal(this.elements.aiGenerateModal);
 		}
-		
 		this.elements.pregenerateAllBtn.addEventListener('click', () => this.pregenerateAllAudioHandler());
 	}
 	
 	_loadAndApplyInitialSettings() {
+		const settings = window.USER_SETTINGS || {};
+		
+		// Helper to get a value from settings or a default
+		const getSetting = (key, defaultValue) => settings[key] !== undefined ? settings[key] : defaultValue;
+		
 		// Floating Play Button Switch
-		const floatingButtonEnabled = localStorage.getItem('floatingPlayButtonEnabled');
 		if (this.elements.floatingPlayButtonSwitch) {
-			if (floatingButtonEnabled !== null) {
-				this.elements.floatingPlayButtonSwitch.checked = (floatingButtonEnabled === 'true');
-			} else {
-				localStorage.setItem('floatingPlayButtonEnabled', this.elements.floatingPlayButtonSwitch.checked.toString());
-			}
+			this.elements.floatingPlayButtonSwitch.checked = getSetting('floatingPlayButtonEnabled', false);
 		}
-		
 		// Unread Text Opacity
-		const savedUnreadOpacity = localStorage.getItem('unreadTextOpacity');
 		if (this.elements.unreadTextOpacityInput && this.elements.unreadTextOpacityValue) {
-			if (savedUnreadOpacity) {
-				this.elements.unreadTextOpacityInput.value = savedUnreadOpacity;
-				this.elements.unreadTextOpacityValue.textContent = `${savedUnreadOpacity}%`;
-			} else {
-				localStorage.setItem('unreadTextOpacity', this.elements.unreadTextOpacityInput.value);
-				this.elements.unreadTextOpacityValue.textContent = `${this.elements.unreadTextOpacityInput.value}%`;
-			}
+			const opacity = getSetting('unreadTextOpacity', 30);
+			this.elements.unreadTextOpacityInput.value = opacity;
+			this.elements.unreadTextOpacityValue.textContent = `${opacity}%`;
 		}
-		
 		// Status Verbosity
-		const savedVerbosity = localStorage.getItem('statusVerbosity');
 		if (this.elements.statusVerbositySelect) {
-			if (savedVerbosity) {
-				this.elements.statusVerbositySelect.value = savedVerbosity;
-				this.statusVerbosity = savedVerbosity;
-			} else {
-				this.statusVerbosity = this.elements.statusVerbositySelect.value;
-				localStorage.setItem('statusVerbosity', this.statusVerbosity);
-			}
-		} else { // Fallback if element not present
-			this.statusVerbosity = localStorage.getItem('statusVerbosity') || 'errors';
+			this.elements.statusVerbositySelect.value = getSetting('statusVerbosity', 'errors');
+			this.statusVerbosity = this.elements.statusVerbositySelect.value;
+		} else {
+			this.statusVerbosity = getSetting('statusVerbosity', 'errors');
 		}
-		
-		
 		// Toggle Play All Button Switch
-		const showPlayAll = localStorage.getItem('showPlayAllButton');
 		if (this.elements.togglePlayAllBtnSwitch) {
-			if (showPlayAll !== null) {
-				this.elements.togglePlayAllBtnSwitch.checked = (showPlayAll === 'true');
-			} else {
-				localStorage.setItem('showPlayAllButton', this.elements.togglePlayAllBtnSwitch.checked.toString());
-			}
-			// Actual button display is on read.php
+			this.elements.togglePlayAllBtnSwitch.checked = getSetting('showPlayAllButton', true);
 		}
-		
 		// Speak Next Hold Duration
-		const savedHoldDuration = localStorage.getItem('speakNextHoldDuration');
 		if (this.elements.speakNextHoldDurationInput) {
-			if (savedHoldDuration) {
-				this.elements.speakNextHoldDurationInput.value = savedHoldDuration;
-			} else {
-				localStorage.setItem('speakNextHoldDuration', this.elements.speakNextHoldDurationInput.value);
-			}
+			this.elements.speakNextHoldDurationInput.value = getSetting('speakNextHoldDuration', 750);
 		}
-		
 		// Display Text Font Size
-		const savedFontSize = localStorage.getItem('displayTextFontSize');
 		if (this.elements.displayTextFontSizeInput) {
-			if (savedFontSize) {
-				this.elements.displayTextFontSizeInput.value = savedFontSize;
-			} else {
-				localStorage.setItem('displayTextFontSize', this.elements.displayTextFontSizeInput.value);
-			}
+			this.elements.displayTextFontSizeInput.value = getSetting('displayTextFontSize', 40);
 		}
-		
 		// TTS Engine
-		const savedTtsEngine = localStorage.getItem('ttsEngine');
 		if (this.elements.ttsEngineSelect) {
-			if (savedTtsEngine && this.elements.ttsEngineSelect.querySelector(`option[value="${savedTtsEngine}"]`)) {
-				this.elements.ttsEngineSelect.value = savedTtsEngine;
-			} else {
-				localStorage.setItem('ttsEngine', this.elements.ttsEngineSelect.value);
-			}
+			this.elements.ttsEngineSelect.value = getSetting('ttsEngine', 'openai');
 		}
-		
 		// TTS Voice (data-saved-voice is used by _updateVoiceAndLanguageUI)
-		const savedTtsVoice = localStorage.getItem('ttsVoice');
-		if (this.elements.ttsVoiceSelect && savedTtsVoice) {
+		const savedTtsVoice = getSetting('ttsVoice', 'nova');
+		if (this.elements.ttsVoiceSelect) {
 			this.elements.ttsVoiceSelect.setAttribute('data-saved-voice', savedTtsVoice);
 		}
-		
 		// TTS Language Code
-		const savedTtsLang = localStorage.getItem('ttsLanguageCode');
 		if (this.elements.ttsLanguageCodeSelect) {
-			if (savedTtsLang && this.elements.ttsLanguageCodeSelect.querySelector(`option[value="${savedTtsLang}"]`)) {
-				this.elements.ttsLanguageCodeSelect.value = savedTtsLang;
-			} else {
-				localStorage.setItem('ttsLanguageCode', this.elements.ttsLanguageCodeSelect.value);
-			}
+			this.elements.ttsLanguageCodeSelect.value = getSetting('ttsLanguageCode', 'en-US');
+		}
+		// Browser TTS Voice
+		// This is still best kept in localStorage as it's browser-specific and not a core user setting
+		if (localStorage.getItem('browserTtsVoice')) {
+			// The population logic will handle applying this
 		}
 		
-		// Chunk settings (wordsPerChunkInput, chunkUnitSelect, volumeInput)
-		// These are standard inputs, so their values will be set if present, or localStorage will be set.
-		['wordsPerChunk', 'chunkUnit', 'volume'].forEach(key => {
-			const inputElement = this.elements[key + (key === 'volume' || key === 'wordsPerChunk' ? 'Input' : 'Select')];
-			if (inputElement) {
-				const savedValue = localStorage.getItem(key);
-				if (savedValue !== null) {
-					inputElement.value = savedValue;
-				} else {
-					localStorage.setItem(key, inputElement.value);
-				}
-			}
-		});
+		// Chunk settings
+		if (this.elements.wordsPerChunkInput) this.elements.wordsPerChunkInput.value = getSetting('wordsPerChunk', 10);
+		if (this.elements.chunkUnitSelect) this.elements.chunkUnitSelect.value = getSetting('chunkUnit', 'words');
+		if (this.elements.volumeInput) this.elements.volumeInput.value = getSetting('volume', 6);
 	}
 	
 	showStatus(message, type = 'info', duration = 3000) {
 		if (this.statusVerbosity === 'none') return;
 		if (this.statusVerbosity === 'errors' && type !== 'danger' && type !== 'warning') return;
-		
 		if (this.elements.statusMessage) {
 			this.elements.statusMessage.textContent = message;
 			this.elements.statusMessage.className = `alert alert-${type} mt-2`;
@@ -182,59 +165,46 @@ class UIManager {
 		if (this.elements.floatingPlayButtonSwitch) {
 			this.elements.floatingPlayButtonSwitch.addEventListener('change', (e) => {
 				const isEnabled = e.target.checked;
-				localStorage.setItem('floatingPlayButtonEnabled', isEnabled.toString());
+				this._updateDbSetting('floatingPlayButtonEnabled', isEnabled);
 				this.showStatus(`Floating button preference ${isEnabled ? 'enabled' : 'disabled'} (for Read Page).`, 'info', 1500);
 			});
 		}
-		
 		if (this.elements.unreadTextOpacityInput) {
 			this.elements.unreadTextOpacityInput.addEventListener('input', (e) => {
 				const opacity = e.target.value;
 				if (this.elements.unreadTextOpacityValue) this.elements.unreadTextOpacityValue.textContent = `${opacity}%`;
-				localStorage.setItem('unreadTextOpacity', opacity);
+				this._updateDbSetting('unreadTextOpacity', opacity);
 			});
 		}
-		
 		if (this.elements.statusVerbositySelect) {
 			this.elements.statusVerbositySelect.addEventListener('change', (e) => {
 				this.statusVerbosity = e.target.value;
-				localStorage.setItem('statusVerbosity', this.statusVerbosity);
+				this._updateDbSetting('statusVerbosity', this.statusVerbosity);
 				this.showStatus(`Status messages set to: ${this.statusVerbosity}`, 'info', 1500);
 			});
 		}
-		
 		if (this.elements.togglePlayAllBtnSwitch) {
 			this.elements.togglePlayAllBtnSwitch.addEventListener('change', (e) => {
 				const show = e.target.checked;
-				localStorage.setItem('showPlayAllButton', show.toString());
+				this._updateDbSetting('showPlayAllButton', show);
 				this.showStatus(`"Play All" button visibility preference saved (for Read Page).`, 'info', 1500);
 			});
 		}
-		
 		if (this.elements.speakNextHoldDurationInput) {
 			this.elements.speakNextHoldDurationInput.addEventListener('change', (e) => {
-				localStorage.setItem('speakNextHoldDuration', e.target.value);
+				this._updateDbSetting('speakNextHoldDuration', e.target.value);
 				this.showStatus(`"Speak Next" hold duration set to ${e.target.value}ms. Setting saved.`, 'info', 1500);
 			});
 		}
-		
 		if (this.elements.displayTextFontSizeInput) {
-			this.elements.displayTextFontSizeInput.addEventListener('input', (e) => { // Use 'input' for live update of storage
+			this.elements.displayTextFontSizeInput.addEventListener('input', (e) => {
 				const fontSize = e.target.value;
 				if (fontSize >= parseInt(e.target.min) && fontSize <= parseInt(e.target.max)) {
-					localStorage.setItem('displayTextFontSize', fontSize);
+					this._updateDbSetting('displayTextFontSize', fontSize);
 				}
 			});
-			this.elements.displayTextFontSizeInput.addEventListener('change', (e) => { // 'change' for final validation and status
-				const fontSize = e.target.value;
-				if (fontSize >= parseInt(e.target.min) && fontSize <= parseInt(e.target.max)) {
-					localStorage.setItem('displayTextFontSize', fontSize);
-					this.showStatus(`Display font size set to ${fontSize}px. Setting saved.`, 'info', 1500);
-				} else {
-					const lastValidSize = localStorage.getItem('displayTextFontSize') || e.target.defaultValue;
-					e.target.value = lastValidSize;
-					this.showStatus(`Font size out of range. Reset to ${lastValidSize}px.`, 'warning', 2000);
-				}
+			this.elements.displayTextFontSizeInput.addEventListener('change', (e) => {
+				this.showStatus(`Display font size setting saved.`, 'info', 1500);
 			});
 		}
 	}
@@ -243,7 +213,6 @@ class UIManager {
 		if (!this.elements.ttsEngineSelect || !this.elements.ttsVoiceSelect || !this.elements.ttsLanguageCodeContainer) {
 			return;
 		}
-		
 		const selectedEngine = this.elements.ttsEngineSelect.value;
 		const voiceSelect = this.elements.ttsVoiceSelect;
 		const langContainer = this.elements.ttsLanguageCodeContainer;
@@ -260,7 +229,7 @@ class UIManager {
 			}
 		}
 		
-		const savedVoice = voiceSelect.getAttribute('data-saved-voice') || localStorage.getItem('ttsVoice');
+		const savedVoice = voiceSelect.getAttribute('data-saved-voice') || window.USER_SETTINGS?.ttsVoice;
 		let currentVoiceStillVisible = false;
 		if (savedVoice) {
 			for (let option of voiceSelect.options) {
@@ -280,8 +249,7 @@ class UIManager {
 				voiceSelect.value = currentOptgroup.options[0].value;
 			}
 		}
-		
-		localStorage.setItem('ttsVoice', voiceSelect.value);
+		this._updateDbSetting('ttsVoice', voiceSelect.value);
 		if (voiceSelect.hasAttribute('data-saved-voice')) voiceSelect.removeAttribute('data-saved-voice');
 		
 		// Browser Voice Select specific handling
@@ -289,23 +257,19 @@ class UIManager {
 			voiceSelect.style.display = 'none'; // Hide server voice select
 			langContainer.style.display = ''; // Show language for browser (can be default)
 			if (langSelect) langSelect.disabled = false;
-			
 			let browserVoiceContainer = document.getElementById('browserVoiceSelectContainer');
 			if (!browserVoiceContainer) {
 				browserVoiceContainer = document.createElement('div');
 				browserVoiceContainer.className = 'col-md-3 mb-3'; // Same as ttsVoiceSelect's parent
 				browserVoiceContainer.id = 'browserVoiceSelectContainer';
-				
 				const label = document.createElement('label');
 				label.className = 'form-label';
 				label.innerHTML = '<i class="fas fa-microphone text-info me-1"></i>Browser Voice:';
 				label.setAttribute('for', 'browserVoiceSelectElement'); // Unique ID for the select
-				
 				const select = document.createElement('select');
 				select.className = 'form-select';
 				select.id = 'browserVoiceSelectElement'; // Store this in elements if needed by other parts
 				this.elements.browserVoiceSelectElement = select; // Add to DOMElements for UIManager
-				
 				browserVoiceContainer.appendChild(label);
 				browserVoiceContainer.appendChild(select);
 				voiceSelect.parentNode.after(browserVoiceContainer); // Insert after original voice select's parent div
@@ -335,7 +299,6 @@ class UIManager {
 	_populateBrowserVoices() {
 		const browserVoiceSelect = this.elements.browserVoiceSelectElement; // Using the one created in _updateVoiceAndLanguageUI
 		if (!browserVoiceSelect || !window.speechSynthesis) return;
-		
 		browserVoiceSelect.innerHTML = ''; // Clear existing
 		const defaultOption = document.createElement('option');
 		defaultOption.value = '';
@@ -350,6 +313,7 @@ class UIManager {
 				option.text = `${voice.name} (${voice.lang})`;
 				browserVoiceSelect.appendChild(option);
 			});
+			// This is a browser-specific setting, so localStorage is appropriate here.
 			const savedBrowserVoice = localStorage.getItem('browserTtsVoice');
 			if (savedBrowserVoice) {
 				browserVoiceSelect.value = savedBrowserVoice;
@@ -364,27 +328,26 @@ class UIManager {
 		browserVoiceSelect.addEventListener('change', (e) => {
 			localStorage.setItem('browserTtsVoice', e.target.value);
 			this.showStatus(`Browser TTS Voice preference saved.`, 'info', 1500);
-			// No direct call to playbackManager, read.php will use this from localStorage
 		});
 	}
 	
 	_bindTtsSettingsListeners() {
 		if (this.elements.ttsEngineSelect) {
 			this.elements.ttsEngineSelect.addEventListener('change', (e) => {
-				localStorage.setItem('ttsEngine', e.target.value);
+				this._updateDbSetting('ttsEngine', e.target.value);
 				this._updateVoiceAndLanguageUI();
 				this.showStatus(`TTS Engine set to ${e.target.options[e.target.selectedIndex].text}. Setting saved.`, 'info', 2000);
 			});
 		}
 		if (this.elements.ttsVoiceSelect) {
 			this.elements.ttsVoiceSelect.addEventListener('change', (e) => {
-				localStorage.setItem('ttsVoice', e.target.value);
+				this._updateDbSetting('ttsVoice', e.target.value);
 				this.showStatus(`TTS Voice set to ${e.target.options[e.target.selectedIndex].text}. Setting saved.`, 'info', 2000);
 			});
 		}
 		if (this.elements.ttsLanguageCodeSelect) {
 			this.elements.ttsLanguageCodeSelect.addEventListener('change', (e) => {
-				localStorage.setItem('ttsLanguageCode', e.target.value);
+				this._updateDbSetting('ttsLanguageCode', e.target.value);
 				this.showStatus(`TTS Language set to ${e.target.value}. Setting saved.`, 'info', 2000);
 			});
 		}
@@ -392,7 +355,6 @@ class UIManager {
 	
 	_bindAIGenerationListeners() {
 		if (!this.elements.generateAiTextBtn || !this.elements.aiPromptInput || !this.elements.aiPreviewArea || !this.elements.useAiTextBtn) return;
-		
 		this.elements.generateAiTextBtn.addEventListener('click', async () => {
 			const prompt = this.elements.aiPromptInput.value.trim();
 			if (!prompt) {
@@ -407,7 +369,7 @@ class UIManager {
 				const formData = new FormData();
 				formData.append('action', 'generate_text_ai');
 				formData.append('prompt', prompt);
-				const response = await fetch(window.location.href, {method: 'POST', body: formData});
+				const response = await fetch('ajax.php', {method: 'POST', body: formData});
 				const result = await response.json();
 				if (result.require_verification) {
 					window.location.reload();
@@ -433,29 +395,20 @@ class UIManager {
 		this.elements.useAiTextBtn.addEventListener('click', () => {
 			const textToUse = this.elements.aiPreviewArea.innerHTML.replace(/<br\s*\/?>/gi, '\n');
 			this.elements.mainTextarea.value = textToUse;
-			// Removed playbackManager.handleTextChange
 			if (this.aiModalInstance) this.aiModalInstance.hide();
 			this.showStatus('Text loaded into textarea.', 'success');
 		});
 	}
 	
-	_getSavedTexts() {
-		return JSON.parse(localStorage.getItem('readOutSlowlyTexts')) || [];
-	}
-	
-	_saveTexts(texts) {
-		localStorage.setItem('readOutSlowlyTexts', JSON.stringify(texts));
-	}
-	
 	_populateLoadModal() {
-		if (!this.elements.savedTextsList || !this.elements.localStorageLoadModal) return;
-		const texts = this._getSavedTexts();
+		if (!this.elements.savedTextsList) return;
+		const texts = this.userTexts; // Use the texts loaded during init
 		this.elements.savedTextsList.innerHTML = '';
 		if (texts.length === 0) {
 			this.elements.savedTextsList.innerHTML = '<li class="list-group-item">No texts saved yet.</li>';
 			return;
 		}
-		texts.sort((a, b) => b.id - a.id);
+		
 		texts.forEach(item => {
 			const li = document.createElement('li');
 			li.className = 'list-group-item d-flex justify-content-between align-items-center';
@@ -465,28 +418,41 @@ class UIManager {
 			textPreview.title = `Preview: ${item.text.substring(0, 200).replace(/\n/g, ' ')}...`;
 			
 			const btnGroup = document.createElement('div');
+			
 			const loadBtn = document.createElement('button');
 			loadBtn.className = 'btn btn-sm btn-outline-primary';
 			loadBtn.innerHTML = '<i class="fas fa-download"></i> Load';
 			loadBtn.onclick = () => {
 				this.elements.mainTextarea.value = item.text;
-				// Removed playbackManager.handleTextChange
-				// Removed displayText update
 				const modalInstance = bootstrap.Modal.getInstance(this.elements.localStorageLoadModal);
 				if (modalInstance) modalInstance.hide();
 				this.showStatus(`Text "${item.name}" loaded.`, 'success');
 			};
+			
 			const deleteBtn = document.createElement('button');
 			deleteBtn.className = 'btn btn-sm btn-outline-danger ms-2';
 			deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Delete';
-			deleteBtn.onclick = () => {
+			deleteBtn.onclick = async () => {
 				if (confirm(`Are you sure you want to delete "${item.name}"?`)) {
-					const updatedTexts = texts.filter(t => t.id !== item.id);
-					this._saveTexts(updatedTexts);
-					this._populateLoadModal();
-					this.showStatus(`Text "${item.name}" deleted.`, 'info');
+					const formData = new FormData();
+					formData.append('action', 'delete_user_text');
+					formData.append('text_id', item.id);
+					try {
+						const response = await fetch('ajax.php', {method: 'POST', body: formData});
+						const result = await response.json();
+						if (result.success) {
+							this.showStatus(`Text "${item.name}" deleted.`, 'info');
+							await this._loadUserTexts(); // Refresh the list from DB
+							this._populateLoadModal(); // Re-render the modal list
+						} else {
+							this.showStatus('Error deleting text: ' + result.message, 'danger');
+						}
+					} catch (error) {
+						this.showStatus('Network error while deleting text.', 'danger');
+					}
 				}
 			};
+			
 			btnGroup.appendChild(loadBtn);
 			btnGroup.appendChild(deleteBtn);
 			li.appendChild(textPreview);
@@ -495,24 +461,40 @@ class UIManager {
 		});
 	}
 	
-	_bindLocalStorageListeners() {
+	_bindLocalStorageListeners() { // This now binds to DB operations
 		if (this.elements.saveToStorageBtn) {
-			this.elements.saveToStorageBtn.addEventListener('click', () => {
+			this.elements.saveToStorageBtn.addEventListener('click', async () => {
 				const text = this.elements.mainTextarea.value.trim();
 				if (!text) {
 					this.showStatus('Textarea is empty. Nothing to save.', 'warning');
 					return;
 				}
-				const texts = this._getSavedTexts();
 				const defaultName = text.substring(0, 30).replace(/\n/g, ' ') + (text.length > 30 ? "..." : "");
 				const name = prompt("Enter a name for this text:", defaultName);
-				if (name === null) return;
-				texts.push({id: Date.now().toString(), name: name || defaultName, text: text});
-				this._saveTexts(texts);
-				this.showStatus('Text saved to LocalStorage!', 'success');
+				if (name === null) return; // User cancelled
+				
+				const formData = new FormData();
+				formData.append('action', 'save_user_text');
+				formData.append('name', name || defaultName);
+				formData.append('text', text);
+				
+				try {
+					const response = await fetch('ajax.php', {method: 'POST', body: formData});
+					const result = await response.json();
+					if (result.success) {
+						this.showStatus('Text saved to your account!', 'success');
+						await this._loadUserTexts(); // Refresh internal list
+					} else {
+						this.showStatus('Error saving text: ' + result.message, 'danger');
+					}
+				} catch (error) {
+					this.showStatus('Network error while saving text.', 'danger');
+				}
 			});
 		}
+		
 		if (this.elements.localStorageLoadModal) {
+			// The modal is now populated with data already fetched on init
 			this.elements.localStorageLoadModal.addEventListener('show.bs.modal', () => this._populateLoadModal());
 		}
 	}
@@ -520,9 +502,7 @@ class UIManager {
 	_bindMainTextareaListener() {
 		if (this.elements.mainTextarea) {
 			this.elements.mainTextarea.addEventListener('input', () => {
-				// Removed playbackManager.handleTextChange
-				// Optionally, save draft to localStorage if desired for index.php persistence
-				// localStorage.setItem('mainTextareaDraft', this.elements.mainTextarea.value);
+				// No action needed here anymore, changes are not auto-saved
 			});
 		}
 	}
@@ -542,22 +522,20 @@ class UIManager {
 						this.elements.wordsPerChunkInput.value = '10';
 					}
 				}
-				localStorage.setItem('chunkUnit', unit);
-				localStorage.setItem('wordsPerChunk', this.elements.wordsPerChunkInput.value);
-				// Removed playbackManager.handleChunkSettingsChange and displayText update
+				this._updateDbSetting('chunkUnit', unit);
+				this._updateDbSetting('wordsPerChunk', this.elements.wordsPerChunkInput.value);
 				this.showStatus(`Chunking settings updated and saved.`, 'info', 1500);
 			});
 		}
-		// Save wordsPerChunk and volume on their own change too
 		if (this.elements.wordsPerChunkInput) {
 			this.elements.wordsPerChunkInput.addEventListener('change', (e) => {
-				localStorage.setItem('wordsPerChunk', e.target.value);
+				this._updateDbSetting('wordsPerChunk', e.target.value);
 				this.showStatus(`Words/Sentences per chunk setting saved.`, 'info', 1500);
 			});
 		}
 		if (this.elements.volumeInput) {
 			this.elements.volumeInput.addEventListener('change', (e) => {
-				localStorage.setItem('volume', e.target.value);
+				this._updateDbSetting('volume', e.target.value);
 				this.showStatus(`Volume setting saved.`, 'info', 1500);
 			});
 		}
@@ -565,17 +543,12 @@ class UIManager {
 	
 	async fetchAndCacheChunk(textChunk) {
 		if (!textChunk || textChunk.trim() === "") return {success: false, message: "Empty chunk"};
-		
 		const trimmedTextChunk = textChunk.trim();
 		const ttsEngine = this.elements.ttsEngineSelect.value;
 		const ttsVoice = this.elements.ttsVoiceSelect.value;
-		const ttsLanguageCode = (ttsEngine === 'google' && !this.elements.ttsLanguageCodeSelect.disabled)
-			? this.elements.ttsLanguageCodeSelect.value
-			: 'n/a';
+		const ttsLanguageCode = (ttsEngine === 'google' && !this.elements.ttsLanguageCodeSelect.disabled) ? this.elements.ttsLanguageCodeSelect.value : 'n/a';
 		const volume = this.elements.volumeInput.value;
-		
 		this.showStatus(`Requesting TTS for: "${trimmedTextChunk.substring(0, 30)}..."`, 'info', null);
-		
 		try {
 			const formData = new FormData();
 			formData.append('action', 'text_to_speech_chunk');
@@ -584,19 +557,13 @@ class UIManager {
 			formData.append('voice', ttsVoice);
 			formData.append('language_code', ttsLanguageCode);
 			formData.append('volume', volume);
-			
 			const fetchOptions = {method: 'POST', body: formData};
-			
-			const response = await fetch(window.location.href, fetchOptions);
-			
+			const response = await fetch('ajax.php', fetchOptions);
 			const result = await response.json();
-			
-			// Check if we need verification (session expired)
 			if (result.require_verification) {
-				window.location.reload(); // Reload the page to trigger verification flow
+				window.location.reload();
 				throw new Error('Session expired. Please reload the page to continue.');
 			}
-			
 			if (result.success && result.fileUrl) {
 				return {success: true, cached: false, url: result.fileUrl};
 			} else {
@@ -609,7 +576,7 @@ class UIManager {
 				console.error("TTS request error:", error);
 				this.showStatus('TTS Request Error: ' + error.message, 'danger');
 			}
-			throw error; // Re-throw to be caught by caller
+			throw error;
 		}
 	}
 	
@@ -619,7 +586,6 @@ class UIManager {
 		if (textToProcess.length === 0) {
 			return {text: "", length: 0};
 		}
-		
 		if (unit === 'words') {
 			let inWord = false;
 			let lastWordEndIndex = -1;
@@ -686,7 +652,6 @@ class UIManager {
 				chunkEndIndex = textToProcess.length - 1;
 			}
 		}
-		
 		if (chunkEndIndex === -1 && textToProcess.length > 0) {
 			chunkEndIndex = textToProcess.length - 1;
 		} else if (textToProcess.length === 0) {
@@ -698,21 +663,17 @@ class UIManager {
 	
 	async pregenerateAllAudioHandler() {
 		const fullText = this.elements.mainTextarea.value;
-		
 		if (!fullText.trim()) {
 			this.showStatus('Textarea is empty. Nothing to pregenerate.', 'warning');
 			this.pregenerateAbortController = null;
 			return;
 		}
-		
 		this.elements.pregenerateAllBtn.disabled = true;
 		this.elements.pregenerateAllBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pregenerating...';
-		
 		let tempPosition = 0;
 		const chunksToFetch = [];
 		const countPerChunk = parseInt(this.elements.wordsPerChunkInput.value) || (this.elements.chunkUnitSelect.value === 'words' ? 10 : 1);
 		const unit = this.elements.chunkUnitSelect.value;
-		
 		while (tempPosition < fullText.length) {
 			const remainingText = fullText.substring(tempPosition);
 			if (remainingText.trim() === "") break;
@@ -723,19 +684,11 @@ class UIManager {
 			}
 			tempPosition += chunkResult.length;
 		}
-		
 		let successCount = 0;
 		let failCount = 0;
 		this.showStatus(`Starting pregeneration for ${chunksToFetch.length} chunks...`, 'info', null);
-		
 		for (let i = 0; i < chunksToFetch.length; i++) {
 			const chunkText = chunksToFetch[i];
-			
-			const ttsEngine = this.elements.ttsEngineSelect.value;
-			const ttsVoice = this.elements.ttsVoiceSelect.value;
-			const ttsLanguageCode = (ttsEngine === 'google' && !this.elements.ttsLanguageCodeSelect.disabled) ? this.elements.ttsLanguageCodeSelect.value : 'n/a';
-			const volume = this.elements.volumeInput.value;
-			
 			this.showStatus(`Pregenerating chunk ${i + 1}/${chunksToFetch.length}: "${chunkText.substring(0, 20)}..."`, 'info', null);
 			try {
 				await this.fetchAndCacheChunk(chunkText);
@@ -747,11 +700,8 @@ class UIManager {
 		}
 		this.elements.pregenerateAllBtn.disabled = false;
 		this.elements.pregenerateAllBtn.innerHTML = '<i class="fas fa-cogs"></i> Pregenerate All Audio';
-		
 		if (chunksToFetch.length === 0) {
 			this.showStatus('No speakable chunks found to pregenerate.', 'info');
-			this.elements.pregenerateAllBtn.disabled = false;
-			this.elements.pregenerateAllBtn.innerHTML = '<i class="fas fa-cogs"></i> Pregenerate All Audio';
 		}
 	}
 }

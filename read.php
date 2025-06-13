@@ -1,5 +1,10 @@
 <?php
-	 include_once 'header.php';
+	include_once 'header.php';
+
+	use App\Helpers\AuthHelper;
+
+	// Fetch user settings to inject into the page for JS
+	$userSettings = AuthHelper::getSettings($_SESSION['user_id']);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -13,6 +18,8 @@
 	<script>
 		// Assuming this is still relevant for TTS calls if they happen from this page
 		var recaptchaTtsAlreadyVerified = true;
+		// Inject user settings from PHP into a global JS variable
+		window.USER_SETTINGS = <?php echo json_encode($userSettings ?: new stdClass()); ?>;
 	</script>
 </head>
 <body>
