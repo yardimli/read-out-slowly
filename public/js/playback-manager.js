@@ -74,32 +74,6 @@ class PlaybackManager {
 		});
 	}
 	
-	updateFloatingButtonVisibility(isEnabled) {
-		this.isFloatingButtonEnabled = isEnabled;
-		
-		// Hide or show the main speak next button based on the floating button toggle
-		if (this.elements.speakNextBtn) {
-			this.elements.speakNextBtn.style.display = isEnabled ? 'none' : 'inline-block';
-		}
-		
-		if (this.floatingPlayButtonElement) {
-			this.floatingPlayButtonElement.style.display = isEnabled ? 'block' : 'none';
-		}
-	}
-	
-	handleTextChange(isNewTextSource = false) {
-		this.currentTextPosition = 0;
-		
-		if (isNewTextSource) {
-			// Message is usually set by UIManager for load/AI use
-		} else {
-			this.displayFullTextWithOpacity();
-		}
-		
-		this.stopCurrentPlayback();
-		this.audioCache = {}; // Clear cache on any text change
-	}
-	
 	displayFullTextWithOpacity() {
 		const fullText = this.elements.mainTextarea.value;
 		
@@ -141,21 +115,6 @@ class PlaybackManager {
 		unreadElements.forEach(el => {
 			el.style.opacity = this.unreadTextOpacity;
 		});
-	}
-	
-	
-	handleChunkSettingsChange() {
-		this.currentTextPosition = 0;
-		this.stopCurrentPlayback();
-		this.audioCache = {};
-		this.showStatus('Chunk settings changed. Playback reset.', 'info', 1500);
-		this.elements.displayText.innerHTML = "Chunk settings changed. Click 'Speak Next Chunk' or 'Play All'.";
-	}
-	
-	handleTtsSettingsChange() {
-		this.currentTextPosition = 0;
-		this.stopCurrentPlayback();
-		this.audioCache = {}; // Clear cache as voice/engine affects audio
 	}
 	
 	_simpleHash(str) {

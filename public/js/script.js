@@ -40,6 +40,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 	// Await the initialization, which now includes fetching user data
 	await uiManagerInstance.init();
 	
+	initializeStoryLoader(uiManagerInstance);
+	
 	// Add listener for the new "Read This Text" button
 	if (DOMElements.readTextBtn) {
 		DOMElements.readTextBtn.addEventListener('click', () => {

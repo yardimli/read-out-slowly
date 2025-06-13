@@ -199,6 +199,39 @@
 		</div>
 	</div>
 
+	<div class="modal fade" id="storiesModal" tabindex="-1" aria-labelledby="storiesModalLabel" aria-hidden="true">
+		<div class="modal-dialog modal-xl">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title" id="storiesModalLabel">Load a Short Story</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body">
+					<div class="row">
+						<div class="col-md-4">
+							<h6>Available Stories</h6>
+							<div id="storiesList" class="list-group">
+								<!-- Story list will be populated by JS -->
+								<div class="text-center p-3"><i class="fas fa-spinner fa-spin"></i> Loading stories...</div>
+							</div>
+						</div>
+						<div class="col-md-8">
+							<h6>Story Preview</h6>
+							<div id="storyPreviewArea" class="p-2 border bg-light rounded">
+								<p class="text-muted">Select a story from the list on the left to see its content here.</p>
+							</div>
+						</div>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+					<button type="button" class="btn btn-primary" id="copyStoryToTextboxBtn" disabled><i class="fas fa-copy"></i> Copy to Textbox</button>
+					<button type="button" class="btn btn-success" id="copyAndSaveStoryBtn" disabled><i class="fas fa-save"></i> Copy & Save to My Texts</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
 	<div class="mb-3">
 		<label for="mainTextarea" class="form-label" id="mainTextareaLabel">Enter or generate text below:</label>
 		<textarea id="mainTextarea" class="form-control" rows="6" placeholder="Type or paste your text here..."></textarea>
@@ -216,6 +249,8 @@
 		<button id="loadFromStorageBtn" class="btn btn-warning me-2 mb-2" data-bs-toggle="modal"
 		        data-bs-target="#localStorageLoadModal"><i class="fas fa-upload"></i> Load Text
 		</button>
+		<button id="loadStoriesBtn" class="btn btn-info me-2 mb-2" data-bs-toggle="modal" data-bs-target="#storiesModal"><i class="fas fa-book-open"></i> Load Stories
+		</button>
 		<button id="pregenerateAllBtn" class="btn btn-secondary me-2 mb-2"><i class="fas fa-cogs"></i> Pregenerate All Audio
 		</button>
 		<button id="readTextBtn" class="btn btn-primary me-2 mb-2"><i class="fas fa-book-reader"></i> Read This Text
@@ -226,6 +261,7 @@
 <script src="public/vendor/bootstrap5.3.5/js/bootstrap.bundle.min.js"></script>
 <script src="public/js/ui-manager.js"></script>
 <script src="public/js/script.js"></script>
+<script src="public/js/story-loader.js"></script>
 <script src="public/js/dark-mode.js"></script>
 </body>
 </html>

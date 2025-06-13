@@ -461,7 +461,46 @@ class UIManager {
 		});
 	}
 	
-	_bindLocalStorageListeners() { // This now binds to DB operations
+	async saveTextToDb(text, name) {
+		// 1. Validate that we have text and a name to save.
+		if (!text || !name) {
+			this.showStatus('Text or name is missing for saving.', 'warning');
+			throw new Error('Text or name missing.');
+		}
+		
+		// 2. Prepare the data for the AJAX request.
+		const formData = new FormData();
+		formData.append('action', 'save_user_text');
+		formData.append('name', name);
+		formData.append('text', text);
+		
+		try {
+			// 3. Send the request to the server.
+			const response = await fetch('ajax.php', {
+				method: 'POST',
+				body: formData
+			});
+			const result = await response.json();
+			
+			// 4. Handle the server's response.
+			if (result.success) {
+				this.showStatus(`Text "${name}" saved to your account!`, 'success');
+				// Refresh the internal list of texts so the "Load Text" modal is up-to-date.
+				await this._loadUserTexts();
+			} else {
+				// If the server reports failure, show an error and reject the promise.
+				this.showStatus('Error saving text: ' + result.message, 'danger');
+				throw new Error(result.message);
+			}
+		} catch (error) {
+			// 5. Handle network errors.
+			this.showStatus('Network error while saving text.', 'danger');
+			throw error; // Re-throw the error so the caller knows the operation failed.
+		}
+	}
+	
+	_bindLocalStorageListeners() {
+		// This now binds to DB operations
 		if (this.elements.saveToStorageBtn) {
 			this.elements.saveToStorageBtn.addEventListener('click', async () => {
 				const text = this.elements.mainTextarea.value.trim();
@@ -473,23 +512,10 @@ class UIManager {
 				const name = prompt("Enter a name for this text:", defaultName);
 				if (name === null) return; // User cancelled
 				
-				const formData = new FormData();
-				formData.append('action', 'save_user_text');
-				formData.append('name', name || defaultName);
-				formData.append('text', text);
-				
-				try {
-					const response = await fetch('ajax.php', {method: 'POST', body: formData});
-					const result = await response.json();
-					if (result.success) {
-						this.showStatus('Text saved to your account!', 'success');
-						await this._loadUserTexts(); // Refresh internal list
-					} else {
-						this.showStatus('Error saving text: ' + result.message, 'danger');
-					}
-				} catch (error) {
-					this.showStatus('Network error while saving text.', 'danger');
-				}
+				// Use the new reusable function
+				await this.saveTextToDb(text, name || defaultName).catch(() => {
+					// Error is already shown by saveTextToDb, so we just need to catch the rejection here.
+				});
 			});
 		}
 		

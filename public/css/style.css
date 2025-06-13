@@ -173,3 +173,33 @@ body.playback-controls-active > .container { /* Adjust this value based on the a
     height: 45px;
     width: 10px;
 }
+
+/* Styles for Story Loader Modal */
+#storiesList {
+    max-height: 60vh;
+    /* Adjust as needed */
+    overflow-y: auto;
+}
+
+#storiesList .list-group-item-action {
+    cursor: pointer;
+}
+
+#storyPreviewArea {
+    max-height: 60vh;
+    /* Match the list height */
+    overflow-y: auto;
+    white-space: pre-wrap;
+    /* To respect newlines from the story */
+    background-color: #f8f9fa;
+    /* Light mode default */
+    border: 1px solid #dee2e6;
+    /* Light mode border */
+    padding: 1rem;
+}
+
+[data-bs-theme="dark"] #storyPreviewArea {
+    background-color: #2c3034 !important; /* Dark mode background */
+    border-color: #495057 !important; /* Dark mode border */
+    color: #f8f9fa !important; /* Ensure text is light */
+}

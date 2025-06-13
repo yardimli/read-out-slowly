@@ -112,16 +112,25 @@ document.addEventListener('DOMContentLoaded', () => {
 		DOMElements.browserVoiceSelect.value = localStorage.getItem('browserTtsVoice') || '';
 		DOMElements.speakNextHoldDurationInput.value = getSetting('speakNextHoldDuration', '750');
 		
-		const floatingButtonEnabled = getSetting('floatingPlayButtonEnabled', false);
+		let floatingButtonEnabled = getSetting('floatingPlayButtonEnabled', false);
+		if (floatingButtonEnabled == '1') {
+			floatingButtonEnabled = true;
+		}
+
 		DOMElements.floatingPlayButtonSwitch.checked = floatingButtonEnabled;
 		DOMElements.speakNextBtn.style.display = floatingButtonEnabled ? 'none' : 'inline-block';
+		DOMElements.floatingPlayButtonElement.style.display = DOMElements.floatingPlayButtonSwitch.checked ? 'block' : 'none';
 		// The floating button itself is managed by PlaybackManager
 		
 		// Apply visual settings directly
 		const fontSize = getSetting('displayTextFontSize', '40');
 		DOMElements.displayText.style.fontSize = `${fontSize}px`;
 		
-		const showPlayAll = getSetting('showPlayAllButton', true);
+		let showPlayAll = getSetting('showPlayAllButton', true);
+		if (showPlayAll == '1') {
+			showPlayAll = true;
+		}
+		
 		DOMElements.playAllBtn.style.display = showPlayAll ? 'inline-block' : 'none';
 		DOMElements.stopPlaybackBtn.style.display = showPlayAll ? 'inline-block' : 'none';
 		
