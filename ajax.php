@@ -16,6 +16,18 @@
 // Initialize Database connection
 	Database::getConnection();
 
+	// --- Configuration for the Helper ---
+	$config = [
+		'log_directory' => __DIR__ . '/' . ($_ENV['LOG_DIRECTORY'] ?? 'storage/logs'),
+		'public_storage_path' => __DIR__ . '/' . ($_ENV['PUBLIC_STORAGE_PATH_BASEDIR'] ?? 'public'),
+		'public_url_segment' => $_ENV['PUBLIC_STORAGE_PATH_SEGMENT'] ?? 'public',
+		'app_url' => $_ENV['APP_URL'] ?? 'http://localhost:8000',
+		'ffmpeg_path' => $_ENV['FFMPEG_PATH'] ?? 'ffmpeg'
+	];
+	SimplifiedLlmAudioHelper::init($config);
+
+
+
 // Check if user is logged in. If not, redirect to login page.
 // This protects all pages that include this header.
 	if (!AuthHelper::isLoggedIn()) {
