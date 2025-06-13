@@ -436,6 +436,7 @@ class PlaybackManager {
 				const voiceName = this.elements.browserVoiceSelect ? this.elements.browserVoiceSelect.value : '';
 				const languageCode = this.elements.ttsLanguageCodeSelect.value;
 				const volume = parseFloat(this.elements.volumeInput.value);
+				console.log(`Using browser TTS with voice: ${voiceName}, language: ${languageCode}, volume: ${volume}`);
 				
 				// Call onPlayStartCallback before starting speech
 				if (onPlayStartCallback) onPlayStartCallback();

@@ -38,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	
 	function showStatus(message, type = 'info', duration = 3000) {
 		// Use the verbosity setting from the injected settings
+		console.log(`Status (${type}): ${message}`);
 		const statusVerbosity = window.USER_SETTINGS?.statusVerbosity || 'errors';
 		if (statusVerbosity === 'none') return;
 		if (statusVerbosity === 'errors' && type !== 'danger' && type !== 'warning') return;
